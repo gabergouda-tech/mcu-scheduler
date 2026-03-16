@@ -1,0 +1,2678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Metlife HUB Inpatient Shift Scheduler</title>
+<!-- Firebase REST API — no SDK needed -->
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" onerror="this.remove()">
+<style>
+:root{
+  --bg:#0f1117;--sf:#161b26;--sf2:#1c2333;--sf3:#222c3d;
+  --bd:#2a3548;--bd2:#334060;
+  --N:#60c6f8;--Nbg:#041520;--Nbr:#093050;
+  --M:#52d986;--Mbg:#041509;--Mbr:#0a3018;
+  --A:#ff8c42;--Abg:#1a0c03;--Abr:#3d1e08;
+  --X:#f5c842;--Xbg:#1a1502;--Xbr:#3d3308;
+  --txt:#e2eaf4;--mut:#3d5068;--mut2:#627a94;
+  --grn:#34d870;--red:#f05454;--org:#f59e0b;
+  --accent:#4f8ef7;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--txt);font-family:'Plus Jakarta Sans','Segoe UI',Tahoma,Arial,sans-serif;font-size:13px;min-height:100vh;}
+.app{display:flex;height:100vh;overflow:hidden;}
+
+/* ── SIDEBAR ── */
+.sb{width:252px;min-width:252px;background:var(--sf);border-right:1px solid var(--bd);display:flex;flex-direction:column;overflow-y:auto;}
+.logo{padding:18px 16px 14px;border-bottom:1px solid var(--bd);}
+.logo-t{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:14px;color:var(--txt);letter-spacing:-.01em;}
+.logo-s{font-size:9.5px;color:var(--mut2);margin-top:3px;font-family:'JetBrains Mono',monospace;}
+.logo-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--grn);margin-right:5px;box-shadow:0 0 6px var(--grn);vertical-align:middle;}
+.nav{padding:10px 6px;flex:1;}
+.sl{padding:10px 10px 4px;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--mut);font-family:'JetBrains Mono',monospace;}
+.ni{display:flex;align-items:center;gap:9px;padding:8px 11px;border-radius:7px;cursor:pointer;color:var(--mut2);font-size:12.5px;font-weight:500;transition:all .15s;border:1px solid transparent;margin-bottom:2px;}
+.ni:hover{background:var(--sf2);color:var(--txt);}
+.ni.on{background:var(--sf3);color:var(--txt);border-color:var(--bd2);}
+.ni-ic{font-size:13px;width:16px;text-align:center;opacity:.8;}
+.ni.on .ni-ic{opacity:1;}
+.nbadge{margin-left:auto;border-radius:10px;padding:1px 7px;font-size:9px;font-family:'JetBrains Mono',monospace;background:var(--red);color:white;display:none;font-weight:700;}
+
+/* Manager-only items hidden by default */
+.manager-only{display:none!important;}
+.manager-mode .manager-only{display:flex!important;}
+.manager-mode .wk-a.manager-only{display:inline!important;}
+.manager-mode .btn.manager-only{display:inline-flex!important;}
+.manager-mode .reviewer-only{display:none!important;}
+.manager-mode .needs-reviewer{display:none!important;}
+
+.shift-ref{padding:0 8px 10px;}
+.sri{display:flex;justify-content:space-between;align-items:center;padding:5px 9px;border-radius:5px;margin-bottom:3px;border:1px solid;}
+.sri-n{font-size:9px;font-weight:700;font-family:'JetBrains Mono',monospace;}
+.sri-t{font-size:9px;font-family:'JetBrains Mono',monospace;opacity:.85;}
+.sri-flex{font-size:8px;color:var(--mut2);font-family:'JetBrains Mono',monospace;margin-top:1px;}
+.week-box{padding:8px;border-top:1px solid var(--bd);}
+.wk-l{font-size:9px;color:var(--mut2);margin-bottom:5px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.07em;}
+.wk-c{display:flex;align-items:center;justify-content:space-between;background:var(--sf2);border:1px solid var(--bd2);border-radius:6px;padding:6px 10px;}
+.wk-a{cursor:pointer;color:var(--mut2);font-size:15px;transition:color .13s;} .wk-a:hover{color:var(--accent);}
+.wk-t{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--txt);}
+
+/* Manager toggle */
+.mgr-toggle{padding:8px;border-top:1px solid var(--bd);}
+.mgr-btn{width:100%;padding:7px;border-radius:6px;border:1px solid var(--bd2);background:var(--sf2);color:var(--mut2);font-size:11px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px;}
+.mgr-btn:hover{border-color:var(--accent);color:var(--accent);}
+.mgr-btn.active{background:rgba(79,142,247,.12);border-color:rgba(79,142,247,.4);color:var(--accent);}
+
+/* ── MAIN ── */
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column;}
+.tbar{padding:14px 22px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;background:var(--sf);position:sticky;top:0;z-index:10;}
+.pt{font-size:16px;font-weight:800;letter-spacing:-.01em;} .ps{font-size:10px;color:var(--mut2);margin-top:2px;font-family:'JetBrains Mono',monospace;}
+.cnt{padding:18px 22px;}
+.page{display:none;} .page.on{display:block;}
+
+/* ── BUTTONS ── */
+.btn{padding:7px 14px;border-radius:6px;border:none;cursor:pointer;font-size:12px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;display:inline-flex;align-items:center;gap:5px;}
+.b-sec{background:var(--sf3);color:var(--txt);border:1px solid var(--bd2);} .b-sec:hover{border-color:var(--accent);color:var(--accent);}
+.b-ok{background:var(--grn);color:#02140a;} .b-ok:hover{filter:brightness(1.1);}
+.b-del{background:transparent;color:var(--red);border:1px solid rgba(240,84,84,.3);font-size:11px;padding:5px 10px;} .b-del:hover{background:rgba(240,84,84,.1);}
+.b-app{background:rgba(52,216,112,.12);color:var(--grn);border:1px solid rgba(52,216,112,.35);font-size:11.5px;padding:5px 11px;} .b-app:hover{background:rgba(52,216,112,.22);}
+.b-rej{background:rgba(240,84,84,.08);color:var(--red);border:1px solid rgba(240,84,84,.22);font-size:11.5px;padding:5px 11px;} .b-rej:hover{background:rgba(240,84,84,.18);}
+.b-auto{background:linear-gradient(135deg,#4f8ef7,#7c5cfc);color:white;font-size:12px;padding:7px 16px;box-shadow:0 2px 12px rgba(79,142,247,.3);} .b-auto:hover{filter:brightness(1.1);transform:translateY(-1px);}
+.flex{display:flex;} .g6{gap:6px;} .g8{gap:8px;} .g12{gap:12px;} .ic{align-items:center;} .jb{justify-content:space-between;} .mla{margin-left:auto;}
+
+/* ── FORMS ── */
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:12px;}
+.ct{font-size:13px;font-weight:700;color:var(--txt);margin-bottom:12px;display:flex;align-items:center;gap:7px;}
+.ct-icon{font-size:15px;}
+.fr{display:grid;gap:10px;margin-bottom:10px;} .fr2{grid-template-columns:1fr 1fr;} .fr3{grid-template-columns:1fr 1fr 1fr;}
+label{font-size:10.5px;color:var(--mut2);display:block;margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;}
+input,select{width:100%;background:var(--sf2);border:1px solid var(--bd2);border-radius:6px;padding:8px 10px;color:var(--txt);font-size:12px;font-family:'Plus Jakarta Sans',sans-serif;outline:none;transition:border-color .13s;}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 2px rgba(79,142,247,.12);} select option{background:var(--sf2);}
+
+/* ── BADGES ── */
+.bdg{display:inline-flex;align-items:center;border-radius:4px;padding:2px 7px;font-size:9.5px;font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;border:1px solid;}
+.bN{background:var(--Nbg);color:var(--N);border-color:var(--Nbr);}
+.bM{background:var(--Mbg);color:var(--M);border-color:var(--Mbr);}
+.bM8{background:#031b09;color:#7efaaa;border-color:#093d18;}
+.bA{background:var(--Abg);color:var(--A);border-color:var(--Abr);}
+.bX{background:var(--Xbg);color:var(--X);border-color:var(--Xbr);}
+.bX12{background:#1a1600;color:#fce98a;border-color:#3d3400;}
+.bpend{background:rgba(245,158,11,.1);color:var(--org);border-color:rgba(245,158,11,.25);}
+.bappr{background:rgba(52,216,112,.1);color:var(--grn);border-color:rgba(52,216,112,.25);}
+.brejt{background:rgba(240,84,84,.1);color:var(--red);border-color:rgba(240,84,84,.25);}
+.bOT{background:rgba(124,92,252,.12);color:#b5a4fc;border-color:rgba(124,92,252,.3);}
+.bflex{background:rgba(79,142,247,.1);color:#7ab3f9;border-color:rgba(79,142,247,.25);}
+
+/* ── TABLES ── */
+.tw{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{text-align:left;padding:8px 11px;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--mut2);border-bottom:1px solid var(--bd);font-family:'JetBrains Mono',monospace;background:var(--sf2);}
+td{padding:9px 11px;border-bottom:1px solid var(--bd);vertical-align:middle;}
+tr:last-child td{border-bottom:none;} tr:hover td{background:rgba(255,255,255,.012);}
+
+/* ── KPI ROW ── */
+.krow{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:14px;}
+.kpi{background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:13px 15px;position:relative;overflow:hidden;}
+.kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:9px 9px 0 0;}
+.kN::after{background:var(--N);} .kM::after{background:var(--M);} .kA::after{background:var(--A);} .kX::after{background:var(--X);}
+.kl{font-size:9px;color:var(--mut2);text-transform:uppercase;letter-spacing:.08em;font-family:'JetBrains Mono',monospace;margin-bottom:4px;}
+.kv{font-size:22px;font-weight:800;line-height:1;}
+.kN .kv{color:var(--N);} .kM .kv{color:var(--M);} .kA .kv{color:var(--A);} .kX .kv{color:var(--X);}
+.ks{font-size:9px;color:var(--mut2);margin-top:3px;}
+
+/* ── COV ROW ── */
+.crow{display:flex;gap:5px;margin-bottom:14px;}
+.cd{background:var(--sf);border:1px solid var(--bd);border-radius:7px;padding:8px 5px;text-align:center;flex:1;transition:all .15s;}
+.cd:hover{border-color:var(--bd2);background:var(--sf2);}
+.cdn{font-size:8.5px;color:var(--mut2);font-weight:700;text-transform:uppercase;font-family:'JetBrains Mono',monospace;}
+.cdv{font-size:16px;font-weight:800;margin:3px 0;}
+.cdk{font-size:8.5px;color:var(--mut2);}
+.ok{color:var(--grn);} .wn{color:var(--X);} .lo{color:var(--red);}
+
+/* ── PRIORITY GRID ── */
+.pg{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:9px;}
+.pc{background:var(--sf2);border:1px solid var(--bd2);border-radius:7px;padding:8px 4px;text-align:center;transition:border-color .13s;}
+.pc:hover{border-color:var(--accent);}
+.pc-d{font-size:9.5px;font-weight:700;color:var(--mut2);margin-bottom:5px;font-family:'JetBrains Mono',monospace;}
+.pc select{font-size:10.5px;padding:4px 3px;border-radius:4px;width:100%;text-align:center;margin-bottom:4px;}
+
+/* ── SCHEDULE GRID ── */
+.sg{display:grid;grid-template-columns:170px repeat(7,1fr);gap:4px;}
+.sh{background:var(--sf2);border:1px solid var(--bd);border-radius:5px;padding:7px;text-align:center;}
+.sh-d{font-size:8.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--mut2);font-family:'JetBrains Mono',monospace;}
+.sh-n{font-size:9.5px;font-weight:700;margin-top:2px;}
+.sn{background:var(--sf2);border:1px solid var(--bd);border-radius:5px;padding:7px 9px;display:flex;align-items:center;gap:7px;}
+.av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
+.rn{font-size:11px;font-weight:700;color:var(--txt);}
+.ri{font-size:8.5px;color:var(--mut2);font-family:'JetBrains Mono',monospace;}
+.sc{border:1px solid var(--bd);border-radius:5px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 2px;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;cursor:default;position:relative;min-height:46px;transition:filter .12s;}
+.sc:hover{filter:brightness(1.2);}
+.sc.N{background:var(--Nbg);color:var(--N);border-color:var(--Nbr);}
+.sc.M{background:var(--Mbg);color:var(--M);border-color:var(--Mbr);}
+.sc.A{background:var(--Abg);color:var(--A);border-color:var(--Abr);}
+.sc.X{background:var(--Xbg);color:var(--X);border-color:var(--Xbr);}
+.sc.M8{background:#031b09;color:#7efaaa;border-color:#093d18;}
+.sc.X12{background:#1a1600;color:#fce98a;border-color:#3d3400;}
+.sc.OFF{background:var(--sf);color:var(--mut);border-color:var(--bd);}
+.sc.OT{outline:2px dashed rgba(124,92,252,.5);outline-offset:-2px;}
+.sc-s{font-size:10px;font-weight:700;}
+.sc-t{font-size:7.5px;opacity:.75;margin-top:1px;}
+.sc-e{font-size:7px;color:var(--org);margin-top:1px;font-weight:600;}
+.tip{position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:#1a2840;border:1px solid var(--bd2);border-radius:5px;padding:6px 9px;font-size:10px;white-space:nowrap;color:var(--txt);pointer-events:none;z-index:200;opacity:0;transition:opacity .1s;font-family:'Plus Jakarta Sans',sans-serif;font-weight:400;line-height:1.6;}
+.sc:hover .tip{opacity:1;}
+
+/* ── ALERT ── */
+.al{border-radius:7px;padding:9px 13px;font-size:11.5px;margin-bottom:7px;border-left:3px solid;line-height:1.6;}
+.al-e{background:rgba(240,84,84,.06);border-color:var(--red);color:#fca5a5;}
+.al-w{background:rgba(245,158,11,.06);border-color:var(--org);color:#fde68a;}
+.al-ok{background:rgba(52,216,112,.06);border-color:var(--grn);color:#86efac;}
+.al-i{background:rgba(96,198,248,.06);border-color:var(--N);color:#bae6fd;}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:2px;background:var(--sf2);border-radius:6px;padding:3px;border:1px solid var(--bd);margin-bottom:14px;}
+.tab{flex:1;padding:6px 10px;border-radius:5px;font-size:11.5px;font-weight:600;cursor:pointer;color:var(--mut2);text-align:center;transition:all .15s;}
+.tab.on{background:var(--sf3);color:var(--txt);} .tab:hover:not(.on){color:var(--txt);}
+
+/* ── SENIORITY PANEL ── */
+.tier-row{display:flex;align-items:center;gap:9px;padding:7px 12px;border-radius:7px;margin-bottom:5px;background:var(--sf2);border:1px solid var(--bd);}
+.tier-badge{font-size:9px;font-family:'JetBrains Mono',monospace;font-weight:600;width:50px;text-align:center;padding:2px 6px;border-radius:4px;flex-shrink:0;}
+.tier-names{font-size:11.5px;color:var(--txt);}
+.tier-detail{font-size:10px;color:var(--mut2);margin-left:auto;font-family:'JetBrains Mono',monospace;}
+
+/* ── SLOT METER ── */
+.smeter{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:14px;}
+.sm-t{font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut2);font-family:'JetBrains Mono',monospace;margin-bottom:8px;}
+
+/* ── APPROVAL CARD ── */
+.apc{background:var(--sf);border:1px solid var(--bd);border-radius:9px;overflow:hidden;margin-bottom:9px;}
+.aph{padding:10px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bd);background:var(--sf2);}
+.apb{padding:10px 14px;}
+
+/* ── REVIEWER CARD (friendly view) ── */
+.rv-card{background:var(--sf);border:1px solid var(--bd);border-radius:10px;padding:16px;margin-bottom:10px;transition:border-color .15s;}
+.rv-card:hover{border-color:var(--bd2);}
+.rv-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0;}
+.rv-name{font-size:14px;font-weight:700;}
+.rv-sub{font-size:10.5px;color:var(--mut2);}
+.rv-shifts-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+.shift-pill{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;border:1px solid;font-size:10.5px;font-weight:600;cursor:pointer;transition:all .15s;}
+.shift-pill:hover{filter:brightness(1.15);}
+.shift-pill.selected{box-shadow:0 0 0 2px currentColor;}
+
+/* ── FLEX SHIFT BUILDER ── */
+.flex-builder{background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:12px;margin-top:10px;}
+.flex-builder-t{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut2);font-family:'JetBrains Mono',monospace;margin-bottom:8px;}
+.time-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--bd);}
+.time-row:last-child{border-bottom:none;}
+.time-day{font-size:11px;font-weight:700;width:36px;flex-shrink:0;}
+.time-start,.time-end{display:flex;flex-direction:column;gap:2px;}
+.time-label{font-size:9px;color:var(--mut2);font-family:'JetBrains Mono',monospace;}
+.time-val{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--N);}
+.time-dur{font-size:9.5px;color:var(--mut2);font-family:'JetBrains Mono',monospace;margin-left:auto;}
+.time-prod{font-size:9px;padding:2px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;}
+
+/* ── MISC ── */
+.empty{text-align:center;padding:40px 20px;color:var(--mut2);}
+.empty-i{font-size:28px;margin-bottom:8px;}
+.empty-t{font-size:14px;font-weight:700;color:var(--mut);margin-bottom:5px;}
+.empty-s{font-size:11.5px;line-height:1.7;}
+.tag{font-family:'JetBrains Mono',monospace;font-size:10px;}
+.divider{height:1px;background:var(--bd);margin:14px 0;}
+#toast{position:fixed;bottom:20px;right:20px;background:var(--sf3);border:1px solid var(--bd2);border-radius:8px;padding:10px 16px;font-size:12.5px;font-weight:700;color:var(--txt);z-index:9999;transform:translateY(70px);opacity:0;transition:all .3s cubic-bezier(.4,0,.2,1);box-shadow:0 8px 24px rgba(0,0,0,.55);}
+#toast.sh{transform:translateY(0);opacity:1;}
+#toast.ts{border-left:3px solid var(--grn);} #toast.te{border-left:3px solid var(--red);}
+#toast.ti{border-left:3px solid var(--N);} #toast.tw{border-left:3px solid var(--org);}
+
+/* My Schedule page */
+.my-shift-day{background:var(--sf);border:1px solid var(--bd);border-radius:9px;padding:14px;margin-bottom:8px;display:flex;align-items:center;gap:14px;transition:border-color .13s;}
+.my-shift-day:hover{border-color:var(--bd2);}
+.msd-day{font-size:11px;font-weight:700;color:var(--mut2);width:32px;text-align:center;}
+.msd-date{font-size:9px;color:var(--mut);font-family:'JetBrains Mono',monospace;}
+.msd-shift{flex:1;}
+.msd-shift-name{font-size:13px;font-weight:700;}
+.msd-shift-time{font-size:10.5px;color:var(--mut2);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.msd-off{color:var(--mut);font-size:12px;font-weight:600;}
+.msd-tag{margin-left:auto;}
+
+/* Welcome banner */
+.welcome-banner{background:linear-gradient(135deg,rgba(79,142,247,.1),rgba(124,92,252,.08));border:1px solid rgba(79,142,247,.2);border-radius:10px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;}
+.wb-icon{font-size:26px;}
+.wb-title{font-size:14px;font-weight:800;color:var(--txt);}
+.wb-sub{font-size:11px;color:var(--mut2);margin-top:2px;line-height:1.5;}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}
+
+/* ── GROUPED SCHEDULE GRID ── */
+.gs-wrap{border:1px solid var(--bd2);border-radius:10px;overflow:hidden;font-family:'Plus Jakarta Sans',sans-serif;}
+.gsh-title{background:#1a2235;padding:11px 16px;font-size:13px;font-weight:800;color:var(--txt);text-align:center;border-bottom:1px solid var(--bd2);letter-spacing:.02em;}
+.gsh-row{display:grid;grid-template-columns:160px repeat(7,1fr);border-bottom:1px solid #1a2235;}
+.gsh-row-hd{background:#161b26;}
+.gsh-sec{border-bottom:2px solid var(--bd2)!important;}
+.gsh-hd{padding:7px 10px;display:flex;align-items:center;font-size:10px;font-weight:700;color:var(--mut2);min-height:32px;}
+.gsh-dh{padding:6px 8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--txt);border-left:1px solid #1a2235;min-height:32px;text-align:center;flex-direction:column;gap:1px;}
+.gsh-cell{padding:5px 7px;border:1px solid transparent;border-radius:5px;margin:3px 4px;min-height:28px;display:flex;align-items:center;gap:5px;}
+.gsh-empty{border-color:transparent!important;background:transparent!important;}
+.gsh-name{font-size:11px;font-weight:700;flex:1;}
+.gsh-ot{font-size:8px;font-weight:800;background:rgba(181,164,252,.25);color:#b5a4fc;padding:1px 4px;border-radius:3px;font-family:JetBrains Mono,monospace;}
+.gsh-footer{display:flex;align-items:center;gap:16px;padding:10px 14px;background:#0f1117;border-top:1px solid var(--bd);font-size:10.5px;color:var(--mut2);font-family:JetBrains Mono,monospace;flex-wrap:wrap;}
+
+/* ── MANAGER EDIT CELLS ── */
+.gsh-editable{position:relative;transition:filter .15s;}
+.gsh-editable:hover{filter:brightness(1.3);outline:1px solid rgba(255,255,255,.25);outline-offset:-1px;}
+.gsh-edit-btn{font-size:9px;color:rgba(255,255,255,.35);margin-left:auto;opacity:0;transition:opacity .15s;flex-shrink:0;}
+.gsh-editable:hover .gsh-edit-btn{opacity:1;}
+.gsh-addable{border:1px dashed rgba(255,255,255,.12)!important;cursor:pointer;transition:all .15s;min-height:28px;border-radius:5px;margin:3px 4px;display:flex;align-items:center;justify-content:center;}
+.gsh-addable:hover{border-color:rgba(255,255,255,.35)!important;background:rgba(255,255,255,.04)!important;}
+.gsh-add-btn{font-size:14px;color:rgba(255,255,255,.2);transition:color .15s;}
+.gsh-addable:hover .gsh-add-btn{color:rgba(255,255,255,.5);}
+
+/* ── NEEDS REVIEWER SELECTED ── */
+.needs-reviewer{display:none!important;}
+.reviewer-selected .needs-reviewer{display:flex!important;}
+.reviewer-selected .ni.needs-reviewer{display:flex!important;}
+.manager-mode .reviewer-selected .needs-reviewer{display:none!important;}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+<!-- ═══ SIDEBAR ═══ -->
+<div class="sb" id="sidebar">
+  <div class="logo">
+    <div class="logo-t"><span class="logo-dot"></span>Metlife HUB Inpatient</div>
+    <div style="font-size:10px;color:var(--mut2);margin-top:1px;padding-left:11px;font-weight:600;letter-spacing:.02em;">Shift Scheduler</div>
+    <div class="logo-s">Egypt Time (UTC+2)</div>
+  </div>
+  <div class="nav">
+    <div class="sl">My Space</div>
+    <div class="ni on" data-p="dashboard" onclick="nav(this,'dashboard')"><span class="ni-ic">🏠</span>Home</div>
+    <div class="ni" data-p="myshift" onclick="nav(this,'myshift')"><span class="ni-ic">📅</span>My Schedule</div>
+    <div class="ni needs-reviewer" data-p="request" onclick="nav(this,'request')"><span class="ni-ic">✏️</span>Request Shift</div>
+    <div class="sl manager-only" style="margin-top:4px">Manager</div>
+    <div class="ni manager-only" data-p="approvals" onclick="nav(this,'approvals')">
+      <span class="ni-ic">✅</span>Approvals<span id="nb" class="nbadge"></span>
+    </div>
+    <div class="ni manager-only" data-p="schedule" onclick="nav(this,'schedule')"><span class="ni-ic">⊞</span>Full Schedule</div>
+    <div class="ni manager-only" data-p="coverage" onclick="nav(this,'coverage')"><span class="ni-ic">▦</span>Coverage</div>
+    <div class="ni manager-only" data-p="team" onclick="nav(this,'team')"><span class="ni-ic">👥</span>Team &amp; Tiers</div>
+    <div class="ni manager-only" data-p="settings" onclick="nav(this,'settings')"><span class="ni-ic">⚙️</span>Settings</div>
+  </div>
+
+  <!-- Shift times reference -->
+  <div class="shift-ref">
+    <div class="sl" style="padding-left:2px">Shift Times (EGY)</div>
+    <div id="shift-ref-list"></div>
+  </div>
+
+  <div class="week-box">
+    <div class="wk-l">Current Week</div>
+    <div class="wk-c">
+      <span class="wk-a manager-only" onclick="changeWeek(-1)">&#8249;</span>
+      <span class="wk-t" id="weekLabel"></span>
+      <span class="wk-a manager-only" onclick="changeWeek(1)">&#8250;</span>
+    </div>
+  </div>
+
+  <div class="mgr-toggle" style="display:flex;flex-direction:column;gap:6px;">
+    <!-- Sync status indicator -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;">
+      <span style="font-size:9.5px;font-family:JetBrains Mono,monospace;color:var(--mut2)" id="sync-indicator">
+        <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#627a94;margin-right:5px;"></span>Initialising…
+      </span>
+      <button onclick="manualSync()" title="Sync now" style="background:none;border:none;color:var(--mut2);cursor:pointer;font-size:13px;padding:0 2px;line-height:1;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--mut2)'">↕</button>
+    </div>
+    <div id="sync-pulse" style="font-size:9px;color:#52d986;text-align:center;font-family:JetBrains Mono,monospace;opacity:0;transition:opacity .5s;min-height:12px;"></div>
+    <button class="mgr-btn" id="mgrToggleBtn" onclick="toggleManagerMode()">🔒 Manager View</button>
+  </div>
+</div>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main">
+
+  <!-- HOME / DASHBOARD -->
+  <div id="page-dashboard" class="page on">
+    <div class="tbar">
+      <div><div class="pt">👋 Welcome</div><div class="ps" id="db-sub"></div></div>
+      <div class="flex g8 ic">
+        <button class="btn b-sec reviewer-only needs-reviewer" id="req-shift-btn" onclick="nav(document.querySelector('[data-p=request]'),'request')">+ Request Shift</button>
+        <button class="btn b-auto manager-only" onclick="autoGen()">⚡ Auto-Generate Schedule</button>
+      </div>
+    </div>
+    <div class="cnt">
+      <div class="welcome-banner" id="wb">
+        <div class="wb-icon">☀️</div>
+        <div>
+          <div class="wb-title" id="wb-title">Good morning!</div>
+          <div class="wb-sub" id="wb-sub">Select your name to see your schedule and submit shift requests.</div>
+        </div>
+        <div style="margin-left:auto">
+          <select id="active-reviewer" onchange="onActiveReviewerChange()" style="width:160px;font-size:11.5px;padding:6px 9px;">
+            <option value="">Who are you?</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Reviewer's personal summary (shown when reviewer selected) -->
+      <div id="my-summary" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:14px" id="my-kpis"></div>
+      </div>
+
+      <!-- Manager KPIs (manager mode only) -->
+      <div class="manager-only" id="mgr-kpis-wrap">
+        <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:'JetBrains Mono',monospace;margin-bottom:8px;">Approved Shifts This Week</div>
+        <div class="krow" style="grid-template-columns:repeat(6,1fr)" id="mgr-kpis">
+          <div class="kpi kM"><div class="kl">Early Morning</div><div class="kv" id="kv-M">0</div><div class="ks">06-14</div></div>
+          <div class="kpi" style="border-top:3px solid #7efaaa"><div class="kl">Morning</div><div class="kv" id="kv-M8" style="color:#7efaaa">0</div><div class="ks">08-16</div></div>
+          <div class="kpi kA"><div class="kl">Late Morning</div><div class="kv" id="kv-A">0</div><div class="ks">10-18</div></div>
+          <div class="kpi" style="border-top:3px solid #fce98a"><div class="kl">Afternoon</div><div class="kv" id="kv-X12" style="color:#fce98a">0</div><div class="ks">12-20</div></div>
+          <div class="kpi kX"><div class="kl">Midday</div><div class="kv" id="kv-X">0</div><div class="ks">14-22</div></div>
+          <div class="kpi kN"><div class="kl">Night</div><div class="kv" id="kv-N">0</div><div class="ks">22-06</div></div>
+        </div>
+        <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:'JetBrains Mono',monospace;margin-bottom:8px;">Daily Coverage</div>
+        <div class="crow" id="db-cov"></div>
+        <div id="db-meter"></div>
+      </div>
+      <div id="db-alerts"></div>
+    </div>
+  </div>
+
+  <!-- MY SCHEDULE -->
+  <div id="page-myshift" class="page">
+    <div class="tbar">
+      <div><div class="pt">My Schedule</div><div class="ps" id="my-sub">Select your name to view your assigned shifts</div></div>
+    </div>
+    <div class="cnt" id="my-schedule-body">
+      <div class="empty"><div class="empty-i">👋</div><div class="empty-t">Select your name</div><div class="empty-s">Go to Home and select your name<br>to see your weekly schedule here.</div></div>
+    </div>
+  </div>
+
+  <!-- SUBMIT REQUEST -->
+  <div id="page-request" class="page">
+    <div class="tbar">
+      <div><div class="pt">Request a Shift</div><div class="ps">Choose your preferred days and shift times · Manager approval required</div></div>
+    </div>
+    <div class="cnt">
+
+      <!-- Hidden name — auto-filled from Home -->
+      <input type="hidden" id="f-name">
+      <div class="card" id="request-header-card">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <div id="req-rv-avatar" style="width:40px;height:40px;border-radius:50%;background:var(--sf3);border:2px solid var(--bd2);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0;">?</div>
+          <div style="flex:1;">
+            <div id="req-reviewer-name" style="font-size:15px;font-weight:800;color:var(--mut2);">Go to Home and select your name first</div>
+            <div id="req-reviewer-sub" style="font-size:11px;color:var(--mut2);margin-top:2px;"></div>
+          </div>
+        </div>
+        <div class="fr" style="margin-top:12px;margin-bottom:0;">
+          <div>
+            <label>Notes for manager (optional)</label>
+            <input id="f-notes" placeholder="Any special requests…">
+          </div>
+        </div>
+        <div id="f-info" style="margin-top:8px;padding:8px 12px;background:var(--sf2);border:1px solid var(--bd2);border-radius:6px;font-size:11.5px;color:var(--mut2);display:none;line-height:1.6;"></div>
+      </div>
+
+      <div class="card">
+        <div class="ct"><span class="ct-icon">📅</span> Your availability this week
+          <span style="font-size:10.5px;color:var(--mut2);font-weight:400;margin-left:4px">Select shifts per day · Annual Leave marks day as off</span>
+        </div>
+        <div id="prio-grid"></div>
+        <div class="flex ic g8" style="margin-top:10px;padding:8px 11px;background:var(--sf2);border:1px solid var(--bd);border-radius:6px;font-size:11.5px;">
+          <span style="color:var(--mut2)">Working days:</span>
+          <span id="f-sel" style="font-weight:700;color:var(--txt)">0</span>
+          <span style="color:var(--mut2)">/ <span id="f-max">5</span> required</span>
+          <span id="f-warn" style="color:var(--red);display:none">⚠️ Minimum not met</span>
+          <span id="f-al-note" style="color:#60c6f8;display:none;margin-left:8px;font-size:10.5px;">🏖 Annual leave days will be marked off</span>
+        </div>
+      </div>
+
+
+      <div class="flex g8" style="justify-content:flex-end;">
+        <button class="btn b-sec" onclick="resetForm()">Clear Form</button>
+        <button class="btn b-ok" onclick="submitReq()">→ Submit for Approval</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPROVALS -->
+  <div id="page-approvals" class="page">
+    <div class="tbar">
+      <div><div class="pt">Manager Approvals</div><div class="ps" id="ap-sub">Pending requests</div></div>
+      <div class="flex g8 ic">
+        <button class="btn b-app" onclick="approveAll()">✓ Approve All Pending</button>
+        <button class="btn b-auto" onclick="autoGen()">⚡ Generate Schedule</button>
+      </div>
+    </div>
+    <div class="cnt"><div id="ap-body"></div></div>
+  </div>
+
+  <!-- SCHEDULE -->
+  <div id="page-schedule" class="page">
+    <div class="tbar">
+      <div><div class="pt">Weekly Schedule</div><div class="ps" id="sc-sub">Egypt Time (UTC+2) · Fixed shift times</div></div>
+      <div class="flex g8 ic">
+        <button class="btn b-sec" onclick="exportCSV()">↓ Export CSV</button>
+        <button class="btn b-auto" onclick="autoGen()">⚡ Regenerate</button>
+      </div>
+    </div>
+    <div class="cnt">
+      <div id="sc-ready"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;padding:8px 13px;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;margin-bottom:12px;font-size:10.5px;color:var(--mut2);">
+        <span style="color:var(--M)">■ Early Morning 06-14</span>
+        <span style="color:#7efaaa">■ Morning 08-16</span>
+        <span style="color:var(--A)">■ Late Morning 10-18</span>
+        <span style="color:#fce98a">■ Afternoon 12-20</span>
+        <span style="color:var(--X)">■ Midday 14-22</span>
+        <span style="color:var(--N)">■ Night 22-06</span>
+        <span style="color:#b5a4fc">■ Overtime</span>
+        <span class="mla tag" style="color:var(--mut)">All times Egypt UTC+2</span>
+      </div>
+      <div id="sc-grid"></div>
+    </div>
+  </div>
+
+  <!-- COVERAGE -->
+  <div id="page-coverage" class="page">
+    <div class="tbar"><div><div class="pt">Coverage Analysis</div><div class="ps">Slot fill vs requirements from approved requests</div></div></div>
+    <div class="cnt">
+      <div class="tabs">
+        <div class="tab on" onclick="covTab(this,'slots')">Slot Fill</div>
+        <div class="tab" onclick="covTab(this,'matrix')">Availability Matrix</div>
+        <div class="tab" onclick="covTab(this,'conflicts')">Conflicts &amp; Rules</div>
+      </div>
+      <div id="cov-slots"></div>
+      <div id="cov-matrix" style="display:none"></div>
+      <div id="cov-conflicts" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- TEAM -->
+  <div id="page-team" class="page">
+    <div class="tbar"><div><div class="pt">Team &amp; Seniority Tiers</div><div class="ps">10 reviewers · 5 seniority tiers · constraints reference</div></div></div>
+    <div class="cnt" id="team-body"></div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page">
+    <div class="tbar">
+      <div><div class="pt">⚙️ Settings &amp; Configuration</div><div class="ps">Manage team, shifts, quotas and schedule rules — no recoding needed</div></div>
+    </div>
+    <div class="cnt" id="settings-body"></div>
+  </div>
+
+</div>
+</div>
+<div id="toast"></div>
+
+<script>
+
+// ══════════════════════════════════════════════════
+// CONSTANTS
+// ══════════════════════════════════════════════════
+const DAYS=['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
+let DAY_LOADS=[117,129,186,194,193,167,148]; // avg daily tickets from Feb 2026 data
+
+const SHIFTS={
+  M:  {name:'Early Morning', time:'06:00–14:00', start:6,  end:14, col:'#52d986', emoji:'🌅'},
+  M8: {name:'Morning',       time:'08:00–16:00', start:8,  end:16, col:'#7efaaa', emoji:'🌤️'},
+  A:  {name:'Late Morning',  time:'10:00–18:00', start:10, end:18, col:'#ff8c42', emoji:'☀️'},
+  X12:{name:'Afternoon',     time:'12:00–20:00', start:12, end:20, col:'#fce98a', emoji:'🌆'},
+  X:  {name:'Midday',        time:'14:00–22:00', start:14, end:22, col:'#f5c842', emoji:'🌇'},
+  N:  {name:'Night',         time:'22:00–06:00', start:22, end:30, col:'#60c6f8', emoji:'🌙'},
+};
+
+let REQ={
+  M:  [1,1,2,2,2,2,2],
+  M8: [2,1,2,2,2,2,2],
+  A:  [2,2,2,2,2,2,2],
+  X12:[1,0,1,1,1,0,0],
+  X:  [1,1,2,2,2,2,2],
+  N:  [1,1,1,1,1,1,1],
+};
+
+let REVIEWERS=[
+  {name:'Bishoy M',      id:'R-01',tier:1,base:3},
+  {name:'Ahmed Ehab',    id:'R-02',tier:2,base:5},
+  {name:'Ibram Atyia',   id:'R-03',tier:2,base:5},
+  {name:'George Emad',   id:'R-04',tier:2,base:5},
+  {name:'Madonna Selim', id:'R-05',tier:3,base:5},
+  {name:'Farah Yasser',  id:'R-06',tier:3,base:5},
+  {name:'Madonna Gamil', id:'R-07',tier:4,base:5},
+  {name:'Mo Thabet',     id:'R-08',tier:4,base:5},
+  {name:'Rita Maged',    id:'R-09',tier:5,base:5},
+  {name:'Mo Fateh',      id:'R-10',tier:5,base:5},
+];
+
+let TIER_COLS={1:'#60c6f8',2:'#52d986',3:'#ff8c42',4:'#f5c842',5:'#a78bfa'};
+let TIER_LABELS={1:'Senior Lead',2:'Senior',3:'Mid-level',4:'Junior',5:'Associate'};
+let AVATAR_COLORS=['#1e4d8c','#1a5c38','#5c2e1a','#4a3c0e','#2e1a5c','#1a4a4a','#5c1a3e','#3c4a1a','#1a2e5c','#5c3c1a'];
+
+// ══════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════
+let requests=[];
+let schedule=[];
+let weekOffset=0;
+let isManagerMode=false;
+let activeReviewerId='';
+// Store per-reviewer per-day custom timings: {reviewerId: {dayIdx: {shift, startHour, endHour}}}
+let customTimings={};
+
+// Firebase stubs removed — async functions hoist correctly
+
+
+// ── DEMO DATA: all 10 reviewers have submitted & been approved ──
+(function injectDemo(){
+  const SK=['M','M8','A','X12','X','N'];
+  const di=[0,1,2,3,4,5,6];
+  function rnd(a){return a[Math.floor(Math.random()*a.length)];}
+  function samp(a,n){return[...a].sort(()=>Math.random()-.5).slice(0,n);}
+  // Realistic scenario: Ibram has Sun+Wed AL, Farah has Tue AL
+  const alMap={'R-03':[1,4],'R-06':[3]};
+  REVIEWERS.forEach((rv,i)=>{
+    const alDays=alMap[rv.id]||[];
+    const pool=di.filter(d=>!alDays.includes(d));
+    const effBase=Math.max(0,rv.base-alDays.length);
+    const workDays=samp(pool,effBase);
+    const ps=i<3?['M','M8','A']:i<6?['A','X12','X']:['X','N','M8'];
+    const days={},prefs={},al={},ot={};
+    di.forEach(d=>{
+      al[d]=alDays.includes(d); ot[d]=false;
+      if(al[d]){days[d]='AL';prefs[d]=[];}
+      else if(workDays.includes(d)){const s=samp(ps,2);days[d]=s[0];prefs[d]=s;}
+      else{days[d]=null;prefs[d]=[];}
+    });
+    requests.push({
+      id:'REQ-'+String(i+1).padStart(3,'0'),
+      reviewer:rv,prefShift:rnd(ps),notes:i===0?'Prefer not Monday':'',
+      days,prefs,al,ot,status:'approved',
+      submittedAt:new Date(Date.now()-Math.random()*86400000*3).toISOString()
+    });
+  });
+})();
+
+// ══════════════════════════════════════════════════
+// MANAGER MODE TOGGLE
+// ══════════════════════════════════════════════════
+function toggleManagerMode(){
+  const code = prompt('Enter manager PIN:');
+  if(code === (window._managerPin||'1234')){
+    isManagerMode = !isManagerMode;
+    document.getElementById('app').classList.toggle('manager-mode', isManagerMode);
+    document.getElementById('sidebar').classList.toggle('manager-mode', isManagerMode);
+    document.querySelectorAll('.manager-only').forEach(el => {
+      el.style.display = isManagerMode ? '' : 'none';
+    });
+    const btn = document.getElementById('mgrToggleBtn');
+    if(isManagerMode){
+      btn.classList.add('active');
+      btn.textContent = '🔓 Manager View (Active)';
+      toast('Manager mode enabled','s');
+    } else {
+      btn.classList.remove('active');
+      btn.textContent = '🔒 Manager View';
+      toast('Returned to reviewer view','i');
+    }
+    renderDash();
+  } else if(code !== null){
+    toast('Incorrect PIN','e');
+  }
+}
+
+// ══════════════════════════════════════════════════
+// SHIFT REFERENCE SIDEBAR
+// ══════════════════════════════════════════════════
+function buildShiftRef(){
+  const list = document.getElementById('shift-ref-list');
+  list.innerHTML = Object.entries(SHIFTS).map(([k,s])=>{
+    const bg = k==='M'?'var(--Mbg)':k==='M8'?'#031b09':k==='A'?'var(--Abg)':k==='X12'?'#1a1600':k==='X'?'var(--Xbg)':'var(--Nbg)';
+    const br = k==='M'?'var(--Mbr)':k==='M8'?'#093d18':k==='A'?'var(--Abr)':k==='X12'?'#3d3400':k==='X'?'var(--Xbr)':'var(--Nbr)';
+    return`<div class="sri" style="background:${bg};border-color:${br}">
+      <span class="sri-n" style="color:${s.col}">${s.emoji} ${s.name}</span>
+      <span class="sri-t" style="color:${s.col}">${s.time}</span>
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════
+// WEEK
+// ══════════════════════════════════════════════════
+function wkStart(o){const d=new Date();const dy=d.getDay();const diff=d.getDate()-(dy===0?6:dy-6)+o*7;const s=new Date(d);s.setDate(diff);s.setHours(0,0,0,0);return s;}
+function fmtWk(o){const s=wkStart(o);const e=new Date(s);e.setDate(e.getDate()+6);const f=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});return f(s)+' – '+f(e);}
+function changeWeek(d){weekOffset+=d;updateWeek();}
+function updateWeek(){
+  document.getElementById('weekLabel').textContent=fmtWk(weekOffset);
+  document.getElementById('db-sub').textContent='Week of '+fmtWk(weekOffset);
+  document.getElementById('sc-sub').textContent='Week of '+fmtWk(weekOffset)+' · Egypt Time (UTC+2)';
+  document.getElementById('ap-sub').textContent=requests.filter(r=>r.status==='pending').length+' pending · week of '+fmtWk(weekOffset);
+}
+
+// ══════════════════════════════════════════════════
+// GREETING
+// ══════════════════════════════════════════════════
+function getGreeting(){
+  const h=new Date().getHours();
+  if(h<12)return'Good morning';
+  if(h<17)return'Good afternoon';
+  return'Good evening';
+}
+
+// ══════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════
+function nav(el,page){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
+  document.getElementById('page-'+page).classList.add('on');
+  el.classList.add('on');
+  if(page==='dashboard')renderDash();
+  if(page==='myshift')renderMySchedule();
+  if(page==='approvals')renderApprovals();
+  if(page==='schedule')renderSchedule();
+  if(page==='coverage')renderCovSlots();
+  if(page==='team')renderTeam();
+  if(page==='settings')renderSettings();
+}
+
+// ══════════════════════════════════════════════════
+// ACTIVE REVIEWER (home page selector)
+// ══════════════════════════════════════════════════
+function buildActiveReviewerDropdown(){
+  const sel = document.getElementById('active-reviewer');
+  REVIEWERS.forEach(r=>{
+    const o = document.createElement('option');
+    o.value = r.id; o.textContent = r.name;
+    sel.appendChild(o);
+  });
+  // Also build the request form dropdown
+  buildReviewerDropdown();
+}
+
+function onActiveReviewerChange(){
+  activeReviewerId = document.getElementById('active-reviewer').value;
+  const rv = REVIEWERS.find(r=>r.id===activeReviewerId);
+  // Show/hide reviewer-dependent UI (Request Shift button + nav item)
+  document.body.classList.toggle('reviewer-selected', !!rv);
+  const wbTitle = document.getElementById('wb-title');
+  const wbSub = document.getElementById('wb-sub');
+  if(rv){
+    wbTitle.textContent = getGreeting()+', '+rv.name.split(' ')[0]+'!';
+    wbSub.textContent = 'You have '+rv.base+' base shifts per week. Use "Request Shift" to submit your availability.';
+    renderMyKpis(rv);
+    document.getElementById('my-summary').style.display='block';
+    // Auto-fill name in request form + update header
+    const fName=document.getElementById('f-name');
+    if(fName) { fName.value=rv.id; onNameChange(); }
+    const reqName=document.getElementById('req-reviewer-name');
+    const reqSub=document.getElementById('req-reviewer-sub');
+    const reqAvatar=document.getElementById('req-rv-avatar');
+    if(reqName) reqName.textContent=rv.name;
+    if(reqName) reqName.style.color='var(--txt)';
+    if(reqSub) reqSub.textContent='Base shifts: '+rv.base+'/week · Min '+(rv.base===3?'3':'5')+' working days required';
+    if(reqAvatar){ reqAvatar.textContent=rv.name.charAt(0); reqAvatar.style.background=TIER_COLS[rv.tier]+'22'; reqAvatar.style.borderColor=TIER_COLS[rv.tier]+'55'; reqAvatar.style.color=TIER_COLS[rv.tier]; }
+  } else {
+    wbTitle.textContent = getGreeting()+'!';
+    wbSub.textContent = 'Select your name to see your schedule and submit shift requests.';
+    document.getElementById('my-summary').style.display='none';
+  }
+}
+
+function renderMyKpis(rv){
+  const myReq = requests.find(r=>r.reviewer.id===rv.id);
+  const mySchEntry = schedule.find(r=>r.reviewer.id===rv.id);
+  const shiftsReq = myReq ? DAYS.filter((_,i)=>myReq.days[i]).length : 0;
+  const shiftsAsgn = mySchEntry ? mySchEntry.totalAssigned : 0;
+  const status = myReq ? myReq.status : 'none';
+  const statusColor = status==='approved'?'var(--grn)':status==='pending'?'var(--org)':status==='rejected'?'var(--red)':'var(--mut2)';
+  const statusLabel = status==='none'?'No request yet':status.charAt(0).toUpperCase()+status.slice(1);
+
+  document.getElementById('my-kpis').innerHTML=`
+    <div class="kpi kM"><div class="kl">Base Shifts/Week</div><div class="kv">${rv.base}</div><div class="ks">your entitlement</div></div>
+    <div class="kpi kA"><div class="kl">Shifts Requested</div><div class="kv" style="color:var(--A)">${shiftsReq}</div><div class="ks">this week</div></div>
+    <div class="kpi kN"><div class="kl">Request Status</div><div class="kv" style="font-size:13px;font-weight:700;color:${statusColor}">${statusLabel}</div><div class="ks">${mySchEntry?shiftsAsgn+' assigned':shiftsAsgn===0?'awaiting schedule':''}</div></div>
+  `;
+}
+
+// ══════════════════════════════════════════════════
+// MY SCHEDULE PAGE
+// ══════════════════════════════════════════════════
+function renderMySchedule(){
+  const body = document.getElementById('my-schedule-body');
+  const sub = document.getElementById('my-sub');
+  if(!activeReviewerId){
+    body.innerHTML='<div class="empty"><div class="empty-i">👋</div><div class="empty-t">Select your name first</div><div class="empty-s">Go to Home and choose your name to view your schedule.</div></div>';
+    return;
+  }
+  const rv = REVIEWERS.find(r=>r.id===activeReviewerId);
+  if(!rv){return;}
+  sub.textContent = rv.name+' · '+fmtWk(weekOffset);
+  const myReq = requests.find(r=>r.reviewer.id===rv.id);
+  const mySchEntry = schedule.find(r=>r.reviewer.id===rv.id);
+
+  if(!myReq){
+    body.innerHTML=`<div class="al al-i" style="margin-bottom:14px">You haven't submitted a shift request for this week yet. <a href="#" onclick="nav(document.querySelector('[data-p=request]'),'request');return false;" style="color:var(--accent)">Submit a request →</a></div>`;
+    return;
+  }
+
+  let html = '';
+  if(myReq.status==='pending'){
+    html+=`<div class="al al-w" style="margin-bottom:14px">⏳ Your request is pending manager approval. Check back soon!</div>`;
+  } else if(myReq.status==='approved' && !mySchEntry){
+    html+=`<div class="al al-i" style="margin-bottom:14px">✅ Your request is approved! The schedule hasn't been generated yet.</div>`;
+  } else if(myReq.status==='rejected'){
+    html+=`<div class="al al-e" style="margin-bottom:14px">❌ Your request was not approved. Please submit a new request.</div>`;
+  }
+
+  const wkS = wkStart(weekOffset);
+  html += DAYS.map((d,di)=>{
+    const date = new Date(wkS); date.setDate(date.getDate()+di);
+    const dateStr = date.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
+
+    let shiftContent = '';
+    if(mySchEntry && mySchEntry.sched[di] !== 'OFF'){
+      const a = mySchEntry.sched[di];
+      const sh = SHIFTS[a.shift];
+      const timing = getEffectiveTiming(rv.id, di, a.shift);
+      const timingStr = formatHour(timing.start)+'–'+formatHour(timing.end);
+      const otTag = a.overtime ? '<span class="bdg bOT" style="margin-left:6px">Overtime</span>' : '';
+      shiftContent = `<div class="msd-shift">
+        <div class="msd-shift-name" style="color:${sh.col}">${sh.emoji} ${sh.name} ${otTag}</div>
+        <div class="msd-shift-time">${timingStr} Egypt Time</div>
+        ${timing.isCustom?'<div style="font-size:9.5px;color:var(--accent);font-family:JetBrains Mono,monospace;margin-top:2px">⏱ Adjusted timing</div>':''}
+      </div>`;
+    } else if(myReq && myReq.days[di]){
+      const sh = SHIFTS[myReq.days[di]];
+      shiftContent = `<div class="msd-shift">
+        <div class="msd-shift-name" style="color:${sh.col};opacity:.6">${sh.emoji} ${sh.name} <span style="font-size:10px;color:var(--mut2)">(requested)</span></div>
+        <div class="msd-shift-time">${sh.time} Egypt Time</div>
+      </div>`;
+    } else {
+      shiftContent = '<div class="msd-off">Day off</div>';
+    }
+
+    return `<div class="my-shift-day">
+      <div style="text-align:center;width:44px">
+        <div class="msd-day">${d}</div>
+        <div class="msd-date">${dateStr}</div>
+      </div>
+      ${shiftContent}
+    </div>`;
+  }).join('');
+
+  body.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════
+// VARIABLE TIMING HELPERS
+// ══════════════════════════════════════════════════
+function formatHour(h){
+  const hh = h % 24;
+  return String(hh).padStart(2,'0')+':00';
+}
+
+function getEffectiveTiming(rvId, dayIdx, shiftKey){
+  const custom = customTimings[rvId] && customTimings[rvId][dayIdx];
+  if(custom && custom.shift === shiftKey){
+    return {start: custom.startHour, end: custom.startHour+8, isCustom: true};
+  }
+  const sh = SHIFTS[shiftKey];
+  return {start: sh.start, end: sh.end, isCustom: false};
+}
+
+// Calculate productivity for a given start hour and day
+function calcProductivity(startHour, dayIdx){
+  const endHour = startHour + 8;
+  const dailyLoad = DAY_LOADS[dayIdx];
+  // Approximate tickets in this 8hr window (use uniform distribution as simplification)
+  const ticketsInWindow = Math.round(dailyLoad * 8 / 24);
+  const actualRate = ticketsInWindow / 8;
+  const utilPct = Math.round((actualRate / TICKETS_PER_HOUR) * 100);
+  return {ticketsInWindow, actualRate: actualRate.toFixed(1), utilPct};
+}
+
+// Build flexible timing UI for selected days
+function onTimingChange(dayIdx, shiftKey){
+  const startHour = parseInt(document.getElementById('ts-'+dayIdx).value);
+  document.getElementById('te-'+dayIdx).textContent = formatHour(startHour+8);
+  const prod = calcProductivity(startHour, dayIdx);
+  const cls = prod.utilPct>=80?'bappr':prod.utilPct>=50?'bpend':'brejt';
+  document.getElementById('tp-'+dayIdx).innerHTML=`
+    <span class="time-prod bdg ${cls}">${prod.utilPct}% util · ~${prod.ticketsInWindow} tix</span>
+    ${prod.ticketsInWindow < MIN_TICKETS_PER_SHIFT ? '<span style="font-size:9.5px;color:var(--red)">⚠ Below 24 tix minimum</span>' : ''}
+  `;
+  // Save custom timing
+  const rvId = document.getElementById('f-name').value;
+  if(rvId){
+    if(!customTimings[rvId]) customTimings[rvId]={};
+    customTimings[rvId][dayIdx] = {shift:shiftKey, startHour, endHour:startHour+8};
+  }
+}
+
+// ══════════════════════════════════════════════════
+// POPULATE REVIEWER DROPDOWN (request form)
+// ══════════════════════════════════════════════════
+function buildReviewerDropdown(){
+  const sel=document.getElementById('f-name');
+  REVIEWERS.forEach(r=>{
+    const o=document.createElement('option');
+    o.value=r.id; o.textContent=r.name+' ('+r.base+' shifts/week)';
+    sel.appendChild(o);
+  });
+}
+
+function onNameChange(){
+  const id=document.getElementById('f-name').value;
+  const rv=REVIEWERS.find(r=>r.id===id);
+  const info=document.getElementById('f-info');
+  const fmax=document.getElementById('f-max');
+  if(rv){
+    fmax.textContent=rv.base;
+    const existing=requests.find(r=>r.reviewer.id===id&&r.status!=='rejected');
+    info.style.display='block';
+    if(existing){
+      info.style.color='var(--org)';
+      info.textContent='⚠️ You already have a '+existing.status+' request — submitting will replace it.';
+    } else {
+      info.style.color='var(--mut2)';
+      info.innerHTML='You can work up to <b style="color:var(--txt)">'+rv.base+'</b> shifts this week. Select your preferred days below.';
+    }
+    // Sync active reviewer
+    if(!activeReviewerId) { activeReviewerId = id; document.getElementById('active-reviewer').value = id; }
+  } else {
+    info.style.display='none';
+    fmax.textContent='5';
+  }
+  updatePrioSummary();
+}
+
+// ══════════════════════════════════════════════════
+// PRIORITY GRID — clickable shift pills
+// ══════════════════════════════════════════════════
+// selectedDays: {dayIdx: Set of shiftKeys (max 4)}
+const selectedDays={};
+DAYS.forEach((_,i)=>selectedDays[i]=new Set());
+// annualLeave: {dayIdx: bool}
+const annualLeave={};
+DAYS.forEach((_,i)=>annualLeave[i]=false);
+// overtimeAvail: {dayIdx: bool}
+const overtimeAvail={};
+DAYS.forEach((_,i)=>overtimeAvail[i]=false);
+
+// Max working days a reviewer can select without OT flag
+function workingDayCount(){
+  return DAYS.filter((_,i)=>selectedDays[i].size>0&&!annualLeave[i]).length;
+}
+function canAddWorkingDay(i){
+  // Day i already has shifts → not adding a new day
+  if(selectedDays[i].size>0) return true;
+  // Day i is AL → not a working day
+  if(annualLeave[i]) return true;
+  const rv=REVIEWERS.find(r=>r.id===(document.getElementById('f-name')||{}).value);
+  const maxBase=rv?rv.base:5;
+  const maxDays=Math.min(maxBase,5);
+  if(workingDayCount()<maxDays) return true;
+  // Over limit — check if OT is toggled for this day
+  if(overtimeAvail[i]) return true;
+  return false;
+}
+function buzzOT(i){
+  toast('Max 5 working days reached! Toggle ⚡ OT on day '+(i+1)+' first to add it as overtime.','e');
+  // Shake the OT pill for that row
+  const row=document.getElementById('day-row-'+i);
+  if(row){row.style.animation='shake .4s';setTimeout(()=>row.style.animation='',500);}
+}
+
+function buildPrioGrid(){
+  const g=document.getElementById('prio-grid');
+  g.innerHTML='';
+  g.style.cssText='display:flex;flex-direction:column;gap:0px;';
+
+  // ── Header row with Clear All ──
+  const hdr=document.createElement('div');
+  hdr.style.cssText='display:flex;align-items:center;justify-content:flex-end;padding:4px 2px 8px;border-bottom:2px solid var(--bd2);margin-bottom:2px;';
+  hdr.innerHTML='<button onclick="bulkClear()" style="padding:4px 11px;border-radius:16px;border:1px solid var(--bd2);background:transparent;color:var(--mut2);font-size:10.5px;font-weight:700;cursor:pointer;">✕ Clear all</button>';
+  g.appendChild(hdr);
+
+  DAYS.forEach((d,i)=>{
+    const row=document.createElement('div');
+    row.id='day-row-'+i;
+    row.style.cssText='display:flex;align-items:center;gap:7px;padding:7px 2px;border-bottom:1px solid var(--bd);flex-wrap:wrap;';
+    row.innerHTML='<div style="width:36px;font-size:11px;font-weight:700;color:var(--mut2);flex-shrink:0;">'+d+'</div>'
+      +'<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;" id="pills-'+i+'"></div>';
+    g.appendChild(row);
+    buildDayPills(i);
+  });
+}
+
+function buildDayPills(i){
+  // container is the flex row inside the day-row div
+  const container=document.getElementById('pills-'+i);
+  if(!container)return;
+  container.innerHTML='';
+  const shiftKeys=['M','M8','A','X12','X','N'];
+  const sel=selectedDays[i];
+  const alOn=annualLeave[i];
+  const otOn=overtimeAvail[i];
+  const isOff=sel.size===0;
+  const allSelected=sel.size===shiftKeys.length;
+
+  // ── Annual Leave mode: just show badge + cancel ──
+  if(alOn){
+    container.style.cssText='display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex:1;opacity:.6;';
+    mk(container,'div','padding:4px 12px;border-radius:16px;border:1px solid var(--N);font-size:10px;font-weight:700;color:var(--N);background:rgba(96,198,248,.1);',{text:'🏖 Annual Leave'});
+    mk(container,'span','font-size:9.5px;color:var(--mut2);',{text:'· counts as day off'});
+    const cancelAl=mk(container,'div','margin-left:auto;padding:4px 10px;border-radius:16px;border:1px solid var(--bd2);font-size:9.5px;font-weight:700;cursor:pointer;color:var(--mut2);',{text:'✕ Remove'});
+    cancelAl.onclick=()=>{annualLeave[i]=false;buildDayPills(i);updatePrioSummary();};
+    return;
+  }
+  container.style.cssText='display:flex;gap:5px;flex-wrap:nowrap;align-items:center;flex:1;overflow-x:auto;';
+
+  // ── Pill helper ──
+  function pill(txt,active,col,cb,title){
+    const p=document.createElement('div');
+    const border=active?col:'var(--bd)';
+    const color=active?col:'var(--mut2)';
+    const bg=active?col+'18':'transparent';
+    p.style.cssText='padding:4px 9px;border-radius:16px;border:1px solid '+border+';font-size:10px;font-weight:700;cursor:pointer;transition:all .12s;color:'+color+';background:'+bg+';white-space:nowrap;flex-shrink:0;';
+    if(active) p.style.boxShadow='0 0 0 1px '+col+'44';
+    p.textContent=txt;
+    if(title) p.title=title;
+    if(cb) p.onclick=cb;
+    return p;
+  }
+
+  // OFF
+  const offP=pill('OFF',isOff,'var(--mut2)',()=>{sel.clear();buildDayPills(i);updatePrioSummary();});
+  if(isOff){offP.style.color='var(--txt)';offP.style.background='var(--sf3)';}
+  container.appendChild(offP);
+
+  // Divider
+  const dv=()=>{const d=document.createElement('div');d.style.cssText='width:1px;height:16px;background:var(--bd2);flex-shrink:0;';return d;};
+  container.appendChild(dv());
+
+  // All day
+  container.appendChild(pill('✓ All day',allSelected,'var(--grn)',()=>{
+    if(allSelected){sel.clear();}else{if(!canAddWorkingDay(i)){buzzOT(i);return;}shiftKeys.forEach(sk=>sel.add(sk));}
+    buildDayPills(i);updatePrioSummary();
+  },'Available for any shift'));
+
+  // All except + dropdown
+  const excWrap=document.createElement('div');
+  excWrap.style.cssText='display:flex;align-items:center;gap:2px;flex-shrink:0;';
+  const excSel=document.createElement('select');
+  excSel.style.cssText='font-size:9px;padding:2px 4px;border-radius:10px;border:1px solid var(--bd2);background:var(--sf2);color:var(--txt);max-width:95px;cursor:pointer;';
+  excSel.innerHTML='<option value="M">🌅 Early Morn.</option><option value="M8">🌤️ Morning</option><option value="A">☀️ Late Morn.</option><option value="X12">🌆 Afternoon</option><option value="X">🌇 Midday</option><option value="N">🌙 Night</option>';
+  const pv=window['_excv_'+i]; if(pv) excSel.value=pv;
+  const isExcActive=()=>{const e=excSel.value,exp=shiftKeys.filter(k=>k!==e);return exp.length===sel.size&&exp.every(k=>sel.has(k));};
+  const excActive=isExcActive();
+  const excBtn=pill('All except',excActive,'var(--org)',()=>{
+    const e=excSel.value;
+    if(isExcActive()){sel.clear();}
+    else{if(!canAddWorkingDay(i)){buzzOT(i);return;}sel.clear();shiftKeys.filter(k=>k!==e).forEach(sk=>sel.add(sk));}
+    buildDayPills(i);updatePrioSummary();
+  });
+  excSel.onchange=()=>{
+    window['_excv_'+i]=excSel.value;
+    if(sel.size>0){sel.clear();shiftKeys.filter(k=>k!==excSel.value).forEach(sk=>sel.add(sk));updatePrioSummary();}
+    buildDayPills(i);
+  };
+  excWrap.appendChild(excBtn);
+  excWrap.appendChild(excSel);
+  container.appendChild(excWrap);
+
+  container.appendChild(dv());
+
+  // Individual shift pills
+  shiftKeys.forEach(sk=>{
+    const sh=SHIFTS[sk];
+    const isSel=sel.has(sk);
+    const atMax=sel.size>=4&&!isSel;
+    const p=document.createElement('div');
+    p.style.cssText='padding:4px 9px;border-radius:16px;border:1px solid '+(isSel?sh.col:'var(--bd)')+';font-size:10px;font-weight:600;cursor:'+(atMax?'not-allowed':'pointer')+';transition:all .12s;color:'+(isSel?sh.col:atMax?'var(--mut)':'var(--mut2)')+';background:'+(isSel?sh.col+'18':'transparent')+';display:flex;align-items:center;gap:3px;opacity:'+(atMax?'.35':'1')+';flex-shrink:0;';
+    if(isSel) p.style.boxShadow='0 0 0 1px '+sh.col+'44';
+    p.innerHTML=sh.emoji+' '+sh.name;
+    p.onclick=()=>{if(atMax)return;if(isSel){sel.delete(sk);buildDayPills(i);updatePrioSummary();}else{if(!canAddWorkingDay(i)){buzzOT(i);return;}sel.add(sk);buildDayPills(i);updatePrioSummary();}};
+    container.appendChild(p);
+  });
+
+  // Count badge
+  if(sel.size>1&&!allSelected){
+    const b=document.createElement('span');
+    b.style.cssText='font-size:9px;color:var(--accent);font-weight:700;font-family:JetBrains Mono,monospace;flex-shrink:0;';
+    b.textContent=sel.size+'✓';
+    container.appendChild(b);
+  }
+
+  // Spacer pushes OT+AL to far right
+  const sp=document.createElement('div');sp.style.cssText='flex:1;min-width:8px;';
+  container.appendChild(sp);
+
+  // ── OT Available toggle ──
+  const otP=pill('⚡ OT '+(otOn?'▲':'▼'),otOn,'#b5a4fc',()=>{
+    overtimeAvail[i]=!overtimeAvail[i];
+    if(!overtimeAvail[i]) {} // keep shift selections as-is
+    buildDayPills(i);updatePrioSummary();
+  },otOn?'Remove OT availability':'Available for overtime');
+  container.appendChild(otP);
+
+  // Annual Leave toggle
+  const alP=pill('🏖 AL',false,'#60c6f8',()=>{
+    annualLeave[i]=true;sel.clear();overtimeAvail[i]=false;
+    buildDayPills(i);updatePrioSummary();
+  },'Mark as annual leave (day off)');
+  container.appendChild(alP);
+
+  // ── OT expand panel (second line, only when OT on and no shifts selected) ──
+  if(otOn && sel.size===0){
+    // Insert a second-line div after the container in the row
+    const row=document.getElementById('day-row-'+i);
+    if(row){
+      let otPanel=document.getElementById('ot-panel-'+i);
+      if(!otPanel){
+        otPanel=document.createElement('div');
+        otPanel.id='ot-panel-'+i;
+        // Make the row flex-wrap so the panel wraps to next line
+        row.style.flexWrap='wrap';
+        row.appendChild(otPanel);
+      }
+      otPanel.style.cssText='width:100%;padding:6px 10px 4px 44px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;border-top:1px dashed rgba(181,164,252,.2);margin-top:4px;';
+      otPanel.innerHTML='<span style="font-size:9px;color:#b5a4fc;font-weight:700;font-family:JetBrains Mono,monospace;text-transform:uppercase;letter-spacing:.05em;margin-right:4px;">OT slots:</span>';
+
+      const mkOT=(txt,cb)=>{const p=document.createElement('div');p.style.cssText='padding:3px 9px;border-radius:14px;border:1px solid rgba(181,164,252,.35);font-size:9.5px;font-weight:700;cursor:pointer;color:#b5a4fc;background:rgba(124,92,252,.08);white-space:nowrap;';p.textContent=txt;p.onclick=cb;return p;};
+      otPanel.appendChild(mkOT('✓ All day',()=>{shiftKeys.forEach(sk=>sel.add(sk));buildDayPills(i);updatePrioSummary();}));  // OT already toggled, bypass day limit
+
+      // All except for OT
+      const otExcSel=document.createElement('select');
+      otExcSel.style.cssText='font-size:9px;padding:2px 4px;border-radius:10px;border:1px solid rgba(181,164,252,.3);background:var(--sf2);color:#b5a4fc;max-width:100px;';
+      otExcSel.innerHTML='<option value="M">🌅 Early Morn.</option><option value="M8">🌤️ Morning</option><option value="A">☀️ Late Morn.</option><option value="X12">🌆 Afternoon</option><option value="X">🌇 Midday</option><option value="N">🌙 Night</option>';
+      const otExcBtn=mkOT('All except',()=>{const e=otExcSel.value;sel.clear();shiftKeys.filter(k=>k!==e).forEach(sk=>sel.add(sk));buildDayPills(i);updatePrioSummary();});
+      otPanel.appendChild(otExcBtn);
+      otPanel.appendChild(otExcSel);
+
+      shiftKeys.forEach(sk=>{
+        const sh=SHIFTS[sk];
+        const p=document.createElement('div');
+        p.style.cssText='padding:3px 9px;border-radius:14px;border:1px solid rgba(181,164,252,.2);font-size:9.5px;font-weight:600;cursor:pointer;color:var(--mut2);background:transparent;display:flex;align-items:center;gap:2px;white-space:nowrap;';
+        p.innerHTML=sh.emoji+' '+sh.name;
+        p.onclick=()=>{sel.add(sk);buildDayPills(i);updatePrioSummary();};
+        otPanel.appendChild(p);
+      });
+    }
+  } else {
+    // Remove OT panel if exists
+    const op=document.getElementById('ot-panel-'+i);
+    if(op){op.remove();const row=document.getElementById('day-row-'+i);if(row)row.style.flexWrap='nowrap';}
+  }
+}
+
+// helper to make element
+function mk(parent,tag,css,opts){const el=document.createElement(tag);el.style.cssText=css;if(opts){if(opts.text)el.textContent=opts.text;if(opts.html)el.innerHTML=opts.html;}if(parent)parent.appendChild(el);return el;}
+
+// ── Bulk helpers ──
+function bulkClear(){
+  DAYS.forEach((_,i)=>{selectedDays[i].clear();annualLeave[i]=false;overtimeAvail[i]=false;buildDayPills(i);});
+  updatePrioSummary();
+}
+
+function onDayShiftChange(i){
+  updatePrioSummary();
+}
+
+function updatePrioSummary(){
+  const workingDays=DAYS.filter((_,i)=>selectedDays[i].size>0&&!annualLeave[i]).length;
+  const alDays=DAYS.filter((_,i)=>annualLeave[i]).length;
+  const id=document.getElementById('f-name').value;
+  const rv=REVIEWERS.find(r=>r.id===id);
+  const minRequired=rv?(rv.base===3?3:5):5;
+  document.getElementById('f-sel').textContent=workingDays;
+  document.getElementById('f-max').textContent=minRequired;
+  document.getElementById('f-sel').style.color=workingDays>=minRequired?'var(--grn)':workingDays>0?'var(--org)':'var(--mut2)';
+  document.getElementById('f-warn').style.display=workingDays>0&&workingDays<minRequired?'inline':'none';
+  const alNote=document.getElementById('f-al-note');
+  if(alNote) alNote.style.display=alDays>0?'inline':'none';
+}
+
+// ══════════════════════════════════════════════════
+// SUBMIT REQUEST
+// ══════════════════════════════════════════════════
+function submitReq(){
+  const rvId=document.getElementById('f-name').value;
+  const notes=document.getElementById('f-notes').value.trim();
+  if(!rvId){toast('Please select your name on the Home page first.','e');return;}
+  const rv=REVIEWERS.find(r=>r.id===rvId);
+  const minRequired=rv.base===3?3:5;
+  const maxOffAllowed=rv.base===3?4:2;
+
+  const days={},prefs={},al={},ot={};
+  let workCount=0,offCount=0,alCount=0;
+  DAYS.forEach((_,i)=>{
+    const shifts=[...selectedDays[i]];
+    const isAL=annualLeave[i];
+    const isOT=overtimeAvail[i];
+    days[i]=isAL?'AL':shifts.length>0?shifts[0]:null;
+    prefs[i]=shifts.length>1?shifts:null;
+    al[i]=isAL;
+    ot[i]=isOT&&shifts.length===0;
+    if(!isAL&&shifts.length>0) workCount++;
+    else offCount++;
+    if(isAL) alCount++;
+  });
+  const pureOffDays=DAYS.filter((_,i)=>!annualLeave[i]&&selectedDays[i].size===0).length;
+  if(workCount===0){toast('Please select at least one working day.','e');return;}
+  if(workCount<minRequired){toast('You need at least '+minRequired+' working days. Currently '+workCount+'.','e');return;}
+  if(pureOffDays>maxOffAllowed){toast('Max '+maxOffAllowed+' days off allowed (excluding annual leave). You have '+pureOffDays+'.','e');return;}
+  const prefShift=document.getElementById('f-shift')?document.getElementById('f-shift').value:'';
+
+  const existing=requests.findIndex(r=>r.reviewer.id===rvId);
+  const req={reviewer:rv,prefShift,notes,days,prefs,al,ot,status:'pending',submitted:new Date().toLocaleTimeString('en-GB'),isOT:workCount>rv.base};
+  if(existing>=0){requests[existing]=req;toast('Request updated — awaiting manager approval ✓','i');}
+  else{requests.push(req);toast('Submitted! Your request is awaiting manager approval ✓','s');}
+
+  updatePendingBadge();resetForm();renderDash();
+  onActiveReviewerChange();
+  pushState();
+}
+
+function resetForm(){
+  document.getElementById('f-name').value='';
+  const fshift=document.getElementById('f-shift'); if(fshift) fshift.value='';
+  document.getElementById('f-notes').value='';
+  document.getElementById('f-info').style.display='none';
+  document.getElementById('flex-section').style.display='none';
+  DAYS.forEach((_,i)=>{selectedDays[i].clear();annualLeave[i]=false;overtimeAvail[i]=false;buildDayPills(i);});
+  document.getElementById('f-sel').textContent='0';
+  document.getElementById('f-warn').style.display='none';
+  document.getElementById('f-ot-note').style.display='none';
+  document.getElementById('f-max').textContent='5';
+}
+
+// ══════════════════════════════════════════════════
+// APPROVALS
+// ══════════════════════════════════════════════════
+function approve(idx){requests[idx].status='approved';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': approved ✓','s');onActiveReviewerChange();pushState();}
+function reject(idx){requests[idx].status='rejected';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': rejected','i');onActiveReviewerChange();pushState();}
+function approveAll(){
+  const p=requests.filter(r=>r.status==='pending');
+  if(!p.length){toast('No pending requests to approve.','i');return;}
+  requests.forEach(r=>{if(r.status==='pending')r.status='approved';});
+  toast(p.length+' request(s) approved ✓','s');
+  updatePendingBadge();renderApprovals();renderDash();onActiveReviewerChange();pushState();
+}
+function delReq(idx){const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
+
+function updatePendingBadge(){
+  const n=requests.filter(r=>r.status==='pending').length;
+  const nb=document.getElementById('nb');nb.textContent=n;nb.style.display=n?'inline':'none';
+  document.getElementById('ap-sub').textContent=n+' pending · week of '+fmtWk(weekOffset);
+}
+
+function renderApprovals(){
+  const body=document.getElementById('ap-body');
+  if(!requests.length){body.innerHTML='<div class="empty"><div class="empty-i">📋</div><div class="empty-t">No requests yet</div><div class="empty-s">Reviewers submit from the Request Shift page.</div></div>';return;}
+  const groups=[{l:'⏳ Pending',s:'pending'},{l:'✅ Approved',s:'approved'},{l:'❌ Rejected',s:'rejected'}];
+  let html='';
+  groups.forEach(g=>{
+    const list=requests.filter(r=>r.status===g.s);if(!list.length)return;
+    html+='<div style="margin-bottom:14px"><div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:7px;">'+g.l+' ('+list.length+')</div>';
+    list.forEach(r=>{
+      const ri=requests.indexOf(r);
+      const rv=r.reviewer;
+      const sc=TIER_COLS[rv.tier];
+      const dc=DAYS.filter((_,i)=>r.days[i]).length;
+      const db=DAYS.map((d,i)=>{if(!r.days[i])return'';const s=r.days[i];const p=r.prefs[i];
+        // Show custom timing if exists
+        const ct = r.customTimings && r.customTimings[i];
+        const timeNote = ct ? ' '+formatHour(ct.startHour) : '';
+        return'<span class="bdg b'+s+'" style="margin-right:3px;margin-bottom:3px">'+d+' '+(SHIFTS[s]?SHIFTS[s].emoji:'')+ ' '+(SHIFTS[s]?SHIFTS[s].name:s)+(p?' #'+p:'')+timeNote+'</span>';}).join('');
+      const otFlag=r.isOT?'<span class="bdg bOT" style="margin-left:6px">OT request</span>':'';
+      html+='<div class="apc"><div class="aph">'
+        +'<div style="width:30px;height:30px;border-radius:50%;background:'+sc+'22;color:'+sc+';border:1.5px solid '+sc+'55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">'+rv.name.charAt(0)+'</div>'
+        +'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+rv.name+'</div>'
+        +'<div style="font-size:9.5px;color:var(--mut2);font-family:JetBrains Mono,monospace">'+rv.id+' · Tier '+rv.tier+' ('+TIER_LABELS[rv.tier]+') · '+dc+' shifts · pref: <span style="color:'+(SHIFTS[r.prefShift]?SHIFTS[r.prefShift].col:'#fff')+'">'+(SHIFTS[r.prefShift]?SHIFTS[r.prefShift].emoji:'')+' '+(SHIFTS[r.prefShift]?SHIFTS[r.prefShift].name:r.prefShift)+'</span></div></div>'
+        +'<span class="bdg b'+r.status.substring(0,4)+'">'+r.status.toUpperCase()+'</span>'
+        +otFlag
+        +'<div class="flex g6 ic" style="margin-left:10px">'
+        +(r.status!=='approved'?'<button class="btn b-app" onclick="approve('+ri+')">✓ Approve</button>':'')
+        +(r.status!=='rejected'?'<button class="btn b-rej" onclick="reject('+ri+')">✕ Reject</button>':'')
+        +'<button class="btn b-del" onclick="delReq('+ri+')">🗑</button>'
+        +'</div></div>'
+        +'<div class="apb"><div style="margin-bottom:6px;flex-wrap:wrap;display:flex">'+db+'</div>'
+        +(r.notes?'<div style="font-size:11.5px;color:var(--mut2);margin-bottom:4px">📝 '+r.notes+'</div>':'')
+        +'<div style="font-size:9.5px;color:var(--mut);font-family:JetBrains Mono,monospace">Submitted: '+(r.submitted || (r.submittedAt ? new Date(r.submittedAt).toLocaleString('en-GB') : 'N/A'))+'</div>'
+        +'</div></div>';
+    });
+    html+='</div>';
+  });
+  body.innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════
+// AUTO-GENERATE
+// ══════════════════════════════════════════════════
+// RULES:
+//  1. Every reviewer gets their base shifts (5, or 3 for Bishoy) BEFORE any OT
+//  2. If preferred shift slot is full → substitute adjacent shift on SAME day
+//     Adjacency (by start time): M(6)↔M8(8)↔A(10)↔X12(12)↔X(14)↔N(22)
+//  3. 1 shift per day per reviewer (hard). 2nd shift = OT, only after rule 1 done.
+//  4. Day boundary = 06:00–06:00
+// ══════════════════════════════════════════════════
+function autoGen(){
+  const approved=requests.filter(r=>r.status==='approved');
+  if(!approved.length){
+    const p=requests.filter(r=>r.status==='pending').length;
+    if(p)toast(p+' request(s) still need approval first.','w');
+    else toast('No approved requests yet.','e');
+    return;
+  }
+
+  // ── State ──
+  const assigned={};
+  const dayCount={};
+  approved.forEach(r=>{
+    assigned[r.reviewer.id]={};
+    dayCount[r.reviewer.id]=0;
+    DAYS.forEach((_,i)=>assigned[r.reviewer.id][i]='OFF');
+  });
+
+  // ── Shift adjacency map (substitution order by proximity) ──
+  // If preferred shift is full, try these alternatives in order
+  const ADJACENT={
+    M:   ['M8','A','X12','X'],       // 06:00 → try 08, 10, 12, 14
+    M8:  ['M','A','X12','X'],        // 08:00 → try 06, 10, 12, 14
+    A:   ['M8','X12','M','X'],       // 10:00 → try 08, 12, 06, 14
+    X12: ['A','X','M8','M'],         // 12:00 → try 10, 14, 08, 06
+    X:   ['X12','A','M8','N'],       // 14:00 → try 12, 10, 08, 22
+    N:   ['X','X12','A'],            // 22:00 → try 14, 12, 10
+  };
+
+  // ── Helpers ──
+  function getAvail(req, di){
+    if(req.al && req.al[di]) return [];
+    if(req.prefs && Array.isArray(req.prefs[di]) && req.prefs[di].length>0) return req.prefs[di];
+    if(req.days && req.days[di] && req.days[di]!=='AL' && req.days[di]!=='OFF') return [req.days[di]];
+    return [];
+  }
+
+  // Returns the best shift to assign on day di for this reviewer:
+  // first tries their available shifts, then tries adjacent substitutes
+  // Returns null if nothing works on this day
+  function bestShiftForReviewer(req, di){
+    if(req.al && req.al[di]) return null;
+    const id=req.reviewer.id;
+    if(assigned[id][di]!=='OFF') return null;
+    const avail=getAvail(req, di);
+    if(!avail.length) return null;
+
+    // Try each preferred shift first
+    for(const sh of avail){
+      if(REQ[sh] && REQ[sh][di]>0 && filledCount(di,sh)<REQ[sh][di]) return sh;
+    }
+    // Preferred slots all full → try adjacent substitutes for each preferred shift
+    for(const sh of avail){
+      const alts=ADJACENT[sh]||[];
+      for(const alt of alts){
+        if(REQ[alt] && REQ[alt][di]>0 && filledCount(di,alt)<REQ[alt][di]) return alt;
+      }
+    }
+    return null; // no slot available on this day at all
+  }
+
+  function filledCount(di, sh){
+    return approved.filter(r=>assigned[r.reviewer.id][di]!=='OFF'&&assigned[r.reviewer.id][di].shift===sh).length;
+  }
+
+  function assign(req, di, sh, overtime=false, substituted=false){
+    const id=req.reviewer.id;
+    assigned[id][di]={shift:sh, overtime, substituted};
+    dayCount[id]++;
+  }
+
+  // Effective base = reviewer base minus AL days this week
+  // 1 AL + 2 off → works 4 shifts. 2 AL → works 3. etc.
+  function effectiveBase(req){
+    const alCount=DAYS.filter((_,i)=>req.al && req.al[i]).length;
+    return Math.max(0, req.reviewer.base - alCount);
+  }
+
+  function reviewerNeedsShifts(req){
+    return dayCount[req.reviewer.id] < effectiveBase(req);
+  }
+
+  const dayOrder=[2,3,4,5,6,0,1]; // Mon→Fri→Sat→Sun
+  const seniorFirst=[...approved].sort((a,b)=>a.reviewer.tier-b.reviewer.tier);
+  const juniorFirst=[...approved].sort((a,b)=>b.reviewer.tier-a.reviewer.tier);
+  const pendingDoubles=[];
+
+  // ══════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════
+  // PHASE A: Guarantee every reviewer reaches their base count
+  // ZERO OT here. Seniority respected on EVERY day:
+  //   loop order is always dayOrder (outer) → seniorFirst (inner)
+  //   so on each day, the most senior reviewer picks their slot first
+  //   before any junior can claim that day's open slot.
+  //
+  //   A1 — preferred days + exact shift
+  //   A2 — preferred days + adjacent substitute (slot full → nearest shift)
+  //   A3 — ANY remaining day (off-day or unselected day) + exact or adjacent
+  //         This is where "shifted to other/off day" happens — senior gets
+  //         first pick of these expansion days too.
+  // ══════════════════════════════════════════════════════════
+
+  function tryDayWithSub(req, di, shiftList){
+    if(req.al && req.al[di]) return false;          // Annual Leave — never touch
+    const id=req.reviewer.id;
+    if(assigned[id][di]!=='OFF') return false;       // already has a shift this day
+    // 1. Exact preferred shift
+    for(const sh of shiftList){
+      if(REQ[sh] && REQ[sh][di]>0 && filledCount(di,sh)<REQ[sh][di]){
+        assign(req,di,sh,false,false); return true;
+      }
+    }
+    // 2. Adjacent substitute (closest in time first — ADJACENT order is proximity-sorted)
+    for(const sh of shiftList){
+      for(const alt of(ADJACENT[sh]||[])){
+        if(REQ[alt] && REQ[alt][di]>0 && filledCount(di,alt)<REQ[alt][di]){
+          assign(req,di,alt,false,true); return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // PASS A1: Day-by-day, senior first — exact preferred shifts only
+  dayOrder.forEach(di=>{
+    seniorFirst.forEach(req=>{
+      if(!reviewerNeedsShifts(req)) return;
+      if(req.al && req.al[di]) return;
+      if(assigned[req.reviewer.id][di]!=='OFF') return;
+      const avail=getAvail(req,di);
+      for(const sh of avail){
+        if(REQ[sh] && REQ[sh][di]>0 && filledCount(di,sh)<REQ[sh][di]){
+          assign(req,di,sh,false,false); return;
+        }
+      }
+    });
+  });
+
+  // PASS A2: Day-by-day, senior first — adjacent substitution on preferred days
+  dayOrder.forEach(di=>{
+    seniorFirst.forEach(req=>{
+      if(!reviewerNeedsShifts(req)) return;
+      tryDayWithSub(req,di,getAvail(req,di));
+    });
+  });
+
+  // PASS A3: Day-by-day, senior first — expand to ANY day (off-days included)
+  // Reviewers who still need shifts get placed on days they didn't originally select.
+  // Senior reviewer claims the best available slot on each day before junior can.
+  // Pre-compute each reviewer's full known shift-type set (union across all days).
+  const reviewerAllShifts=new Map(
+    approved.map(req=>[
+      req.reviewer.id,
+      [...new Set(dayOrder.flatMap(di=>getAvail(req,di)))]
+    ])
+  );
+  dayOrder.forEach(di=>{
+    seniorFirst.forEach(req=>{
+      if(!reviewerNeedsShifts(req)) return;
+      const myShifts=reviewerAllShifts.get(req.reviewer.id);
+      if(!myShifts || !myShifts.length) return;
+      tryDayWithSub(req,di,myShifts);
+    });
+  });
+
+  // ══════════════════════════════════════════════
+  // PHASE B: Fill remaining REQ gaps with OT
+  // Only now that everyone has their base shifts
+  // ══════════════════════════════════════════════
+
+  // PASS B1: OT — junior first, exact preferred shift or adjacent substitute
+  dayOrder.forEach(di=>{
+    const shiftKeys=Object.keys(REQ);
+    shiftKeys.forEach(sh=>{
+      if(!REQ[sh][di]) return;
+      if(filledCount(di,sh)>=REQ[sh][di]) return;
+      juniorFirst.forEach(req=>{
+        if(filledCount(di,sh)>=REQ[sh][di]) return;
+        const id=req.reviewer.id;
+        if(assigned[id][di]!=='OFF') return;
+        if(req.al && req.al[di]) return;
+        const avail=getAvail(req,di);
+        if(!avail.length) return;
+        // Check if this sh is in their availability or adjacent to it
+        const canTake=avail.includes(sh)||(ADJACENT[avail[0]]||[]).includes(sh);
+        if(!canTake) return;
+        assign(req,di,sh,true,!avail.includes(sh));
+      });
+    });
+  });
+
+  // ══════════════════════════════════════════════
+  // PHASE C: Last-resort doubles (2nd shift same day)
+  // Only if slots still unfilled after all above. Manager confirmation required.
+  // ══════════════════════════════════════════════
+  dayOrder.forEach(di=>{
+    Object.keys(REQ).forEach(sh=>{
+      if(!REQ[sh][di]) return;
+      if(filledCount(di,sh)>=REQ[sh][di]) return;
+      juniorFirst.forEach(req=>{
+        if(filledCount(di,sh)>=REQ[sh][di]) return;
+        const id=req.reviewer.id;
+        const cur=assigned[id][di];
+        if(cur==='OFF') return;
+        if(req.al && req.al[di]) return;
+        if(cur.shift===sh) return;
+        const avail=getAvail(req,di);
+        const canTake=avail.includes(sh)||(ADJACENT[avail[0]||'M']||[]).includes(sh);
+        if(!canTake) return;
+        pendingDoubles.push({
+          reviewerName:req.reviewer.name, reviewerId:id,
+          day:DAYS[di], dayIdx:di,
+          existingShift:SHIFTS[cur.shift].name,
+          newShift:SHIFTS[sh].name, newShiftKey:sh
+        });
+      });
+    });
+  });
+
+  // ── Build schedule output ──
+  schedule=approved.map(r=>{
+    const id=r.reviewer.id;
+    let base=0,total=0;
+    const sched={};
+    DAYS.forEach((_,i)=>{
+      const a=assigned[id][i];
+      if(r.al && r.al[i]) sched[i]='AL';
+      else sched[i]=a==='OFF'?'OFF':a;
+      if(a!=='OFF'){total++;if(!a.overtime)base++;}
+    });
+    return{reviewer:r.reviewer,sched,totalAssigned:total,baseAssigned:base,request:r};
+  }).filter(r=>r.totalAssigned>0);
+
+  // ── Reviewer welfare check (uses effectiveBase — AL days reduce target) ──
+  const underStaffed=approved.filter(r=>dayCount[r.reviewer.id]<effectiveBase(r));
+
+  // ── Coverage report ──
+  const unfilled=[];
+  Object.keys(REQ).forEach(sh=>{
+    DAYS.forEach((_,di)=>{
+      const need=REQ[sh][di];
+      if(!need) return;
+      const got=filledCount(di,sh);
+      if(got<need) unfilled.push({sh,di,need,got});
+    });
+  });
+
+  // ── Toast summary ──
+  if(underStaffed.length){
+    toast('⚠️ '+underStaffed.length+' reviewer(s) under base shifts: '+underStaffed.map(r=>r.reviewer.name.split(' ')[0]).join(', '),'w');
+  } else if(unfilled.length){
+    const msg=unfilled.slice(0,3).map(u=>SHIFTS[u.sh].name+' '+DAYS[u.di]+': '+u.got+'/'+u.need).join(' · ');
+    toast('✅ All reviewers have base shifts · ⚠️ '+unfilled.length+' slot(s) underfilled: '+msg,'w');
+  } else {
+    toast('✅ Full schedule — all reviewers have base shifts & all slots filled','s');
+  }
+
+  renderDash();
+  renderMySchedule();
+  onActiveReviewerChange();
+  nav(document.querySelector('[data-p=schedule]'),'schedule');
+  renderSchedule();
+  if(pendingDoubles.length) showDoublesModal(pendingDoubles);
+  else setTimeout(pushState, 300);
+}
+
+// ── Manager confirmation modal for 2nd-shift-same-day proposals ──
+function showDoublesModal(doubles){
+  const existing=document.getElementById('doubles-modal');
+  if(existing) existing.remove();
+
+  const overlay=document.createElement('div');
+  overlay.id='doubles-modal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--sf);border:1px solid var(--bd2);border-radius:14px;padding:24px;max-width:560px;width:100%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);';
+
+  let rows=doubles.map((d,idx)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--bd);">
+      <input type="checkbox" id="dbl-${idx}" style="width:16px;height:16px;cursor:pointer;accent-color:var(--accent);">
+      <div style="flex:1;">
+        <div style="font-size:12px;font-weight:700;color:var(--txt);">${d.reviewerName} · ${d.day}</div>
+        <div style="font-size:10.5px;color:var(--mut2);margin-top:2px;">
+          Already assigned: <span style="color:var(--org);font-weight:600;">${d.existingShift}</span>
+          → Add 2nd shift: <span style="color:#b5a4fc;font-weight:600;">${d.newShift}</span>
+        </div>
+      </div>
+    </div>`).join('');
+
+  box.innerHTML=`
+    <div style="font-size:15px;font-weight:800;color:var(--txt);margin-bottom:4px;">⚠️ 2nd Shift Confirmation Required</div>
+    <div style="font-size:11.5px;color:var(--mut2);margin-bottom:16px;line-height:1.6;">
+      The following reviewers would need a 2nd shift on the same day to fill remaining slots.
+      Day boundary is <b style="color:var(--txt)">06:00–06:00</b>. Check the ones you approve:
+    </div>
+    <div style="margin-bottom:16px;">${rows}</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;">
+      <button onclick="document.getElementById('doubles-modal').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--mut2);cursor:pointer;font-size:12px;font-weight:600;">Skip All</button>
+      <button onclick="confirmDoubles(${JSON.stringify(doubles).replace(/"/g,'&quot;')})" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-size:12px;font-weight:700;">✓ Apply Selected</button>
+      <button onclick="(()=>{document.querySelectorAll('[id^=dbl-]').forEach(cb=>cb.checked=true);confirmDoubles(${JSON.stringify(doubles).replace(/"/g,'&quot;')})})()" style="padding:8px 16px;border-radius:8px;border:none;background:#22543d;color:#52d986;cursor:pointer;font-size:12px;font-weight:700;">✓ Approve All</button>
+    </div>`;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.onclick=(e)=>{ if(e.target===overlay) overlay.remove(); };
+}
+
+function confirmDoubles(doubles){
+  let applied=0;
+  doubles.forEach((d,idx)=>{
+    const cb=document.getElementById('dbl-'+idx);
+    if(cb && cb.checked){
+      // Find the reviewer's schedule entry and add the double shift as a note
+      const entry=schedule.find(s=>s.reviewer.id===d.reviewerId);
+      if(entry && entry.sched[d.dayIdx] && entry.sched[d.dayIdx]!=='OFF'){
+        entry.sched[d.dayIdx].double=d.newShiftKey; // mark 2nd shift
+      }
+      applied++;
+    }
+  });
+  document.getElementById('doubles-modal').remove();
+  if(applied) toast(applied+' double-shift(s) confirmed and applied to schedule','s');
+  renderSchedule();
+  pushState();
+}
+
+// ══════════════════════════════════════════════════
+// RENDER SCHEDULE
+// ══════════════════════════════════════════════════
+function renderSchedule(){
+  const out=document.getElementById('sc-grid');
+  const ready=document.getElementById('sc-ready');
+  if(!schedule.length){
+    ready.innerHTML='<div class="al al-i" style="margin-bottom:12px">No schedule generated yet. Approve requests and click ⚡ Regenerate.</div>';
+    out.innerHTML=''; return;
+  }
+  ready.innerHTML='';
+
+  // ── Shift row colours matching reference ──
+  const SH_STYLE={
+    M:  {bg:'#0a2e18',hd:'#52d986',label:'6:00 AM TO 2:00 PM'},
+    M8: {bg:'#0a2a18',hd:'#7efaaa',label:'8:00 AM TO 4:00 PM'},
+    A:  {bg:'#2a1800',hd:'#ff8c42',label:'10:00 AM TO 6:00 PM'},
+    X12:{bg:'#2a2000',hd:'#fce98a',label:'12:00 PM TO 8:00 PM'},
+    X:  {bg:'#1a1a00',hd:'#f5c842',label:'2:00 PM TO 10:00 PM'},
+    N:  {bg:'#041520',hd:'#60c6f8',label:'10:00 PM TO 6:00 AM (Night)'},
+  };
+
+  const weekLabel = document.getElementById('sc-sub');
+  if(weekLabel) weekLabel.textContent = 'Week of '+fmtWk(weekOffset)+' · Egypt Time (UTC+2)';
+
+  // ── Build lookup: shift → day → [reviewer names] ──
+  // Also track who is OFF and who is on AL each day
+  const shiftMap={};
+  Object.keys(SH_STYLE).forEach(sh=>{
+    shiftMap[sh]=DAYS.map(()=>[]); // [di] = [{name,ot,sub}]
+  });
+  const alMap=DAYS.map(()=>[]); // names on AL per day
+  const offMap=DAYS.map(()=>[]); // names fully OFF per day
+
+  schedule.forEach(r=>{
+    const name=r.reviewer.name.replace('Madonna ','M.');
+    let hasAnyShift=false;
+    DAYS.forEach((_,di)=>{
+      const a=r.sched[di];
+      if(a==='AL'){ alMap[di].push(name); hasAnyShift=true; return; }
+      if(!a||a==='OFF'){ offMap[di].push(name); return; }
+      if(typeof a==='object'&&a.shift){
+        shiftMap[a.shift][di].push({name,ot:a.overtime,sub:a.substituted,rid:r.reviewer.id});
+        hasAnyShift=true;
+      }
+    });
+  });
+
+  // ── Day header row ──
+  const dayHdr='<div class="gsh-hd"></div>'
+    +DAYS.map((d,di)=>'<div class="gsh-dh">'+d.toUpperCase()+'<div style="font-size:9px;opacity:.5;font-weight:400">~'+DAY_LOADS[di]+' tix</div></div>').join('');
+
+  let html='<div class="gs-wrap">';
+
+  // ── Header ──
+  html+='<div class="gsh-title">HUB ML 501 IP Team — Weekly Schedule</div>';
+  html+='<div class="gsh-row gsh-row-hd">'+dayHdr+'</div>';
+
+  // ── Shift rows ──
+  Object.entries(SH_STYLE).forEach(([sh,style])=>{
+    const slots=shiftMap[sh];
+    const maxRows=Math.max(1,...slots.map(arr=>arr.length));
+    const req=REQ[sh];
+
+    // Section header
+    html+='<div class="gsh-row gsh-sec" style="background:'+style.bg+';border-color:'+style.hd+'33;">'
+      +'<div class="gsh-hd" style="color:'+style.hd+';font-size:10px;font-weight:800;font-family:JetBrains Mono,monospace">'+SHIFTS[sh].emoji+' '+style.label+'</div>'
+      +DAYS.map((_,di)=>{
+        const filled=slots[di].length;
+        const need=req[di];
+        const col=need===0?'var(--mut)':(filled>=need?'#34d870':'#f59e0b');
+        return '<div class="gsh-dh" style="font-size:9px;color:'+col+';font-family:JetBrains Mono,monospace">'+(need===0?'—':filled+'/'+need)+'</div>';
+      }).join('')
+      +'</div>';
+
+    // Reviewer rows for this shift
+    for(let row=0;row<maxRows;row++){
+      html+='<div class="gsh-row" style="background:'+style.bg+'88;">'
+        +'<div class="gsh-hd"></div>'
+        +DAYS.map((_,di)=>{
+          const cell=slots[di][row];
+          if(!cell){
+            // Empty slot — manager can fill it
+            const editAttr=isManagerMode?' data-edit-empty="1" data-di="'+di+'" data-sh="'+sh+'" title="Click to assign reviewer" style="cursor:pointer;"':'';
+            return '<div class="gsh-cell gsh-empty'+( isManagerMode?' gsh-addable':'')+'"'+editAttr+'>'
+              +(isManagerMode?'<span class="gsh-add-btn">＋</span>':'')
+              +'</div>';
+          }
+          const otBadge=cell.ot?'<span class="gsh-ot">OT</span>':'';
+          const subStyle=cell.sub?'border-style:dashed;':'';
+          const bgCol=cell.ot?'rgba(181,164,252,.15)':style.bg;
+          const editAttr=isManagerMode?' data-edit="1" data-rid="'+cell.rid+'" data-di="'+di+'" data-sh="'+sh+'" title="Click to edit" style="cursor:pointer;"':'';
+          return '<div class="gsh-cell'+( isManagerMode?' gsh-editable':'')+'" style="background:'+bgCol+';border-color:'+style.hd+'55;'+subStyle+'"'+editAttr+'>'
+            +'<span class="gsh-name" style="color:'+style.hd+'">'+cell.name+'</span>'+otBadge
+            +(isManagerMode?'<span class="gsh-edit-btn">✎</span>':'')
+            +'</div>';
+        }).join('')
+        +'</div>';
+    }
+  });
+
+  // ── Annual Leave row ──
+  const hasAL=alMap.some(a=>a.length>0);
+  if(hasAL){
+    html+='<div class="gsh-row gsh-sec" style="background:#0a2a0a;border-color:#52d98633;">'
+      +'<div class="gsh-hd" style="color:#52d986;font-size:10px;font-weight:800;font-family:JetBrains Mono,monospace">🏖 Annual Leave</div>'
+      +DAYS.map((_,di)=>'<div class="gsh-dh"></div>').join('')
+      +'</div>';
+    const maxAL=Math.max(1,...alMap.map(a=>a.length));
+    for(let row=0;row<maxAL;row++){
+      html+='<div class="gsh-row" style="background:#0a2a0a55;">'
+        +'<div class="gsh-hd"></div>'
+        +DAYS.map((_,di)=>{
+          const name=alMap[di][row];
+          if(!name) return '<div class="gsh-cell gsh-empty"></div>';
+          return '<div class="gsh-cell" style="background:#0d3a0d;border-color:#52d98644;">'
+            +'<span class="gsh-name" style="color:#52d986">'+name+'</span>'
+            +'</div>';
+        }).join('')
+        +'</div>';
+    }
+  }
+
+  // ── Off Duty section ──
+  const hasOff=offMap.some(a=>a.length>0);
+  if(hasOff){
+    html+='<div class="gsh-row gsh-sec" style="background:#1a1a1a;border-color:#3d506855;">'
+      +'<div class="gsh-hd" style="color:var(--mut2);font-size:10px;font-weight:800;font-family:JetBrains Mono,monospace">🔘 Off Duty</div>'
+      +DAYS.map(()=>'<div class="gsh-dh"></div>').join('')
+      +'</div>';
+    const maxOff=Math.max(1,...offMap.map(a=>a.length));
+    for(let row=0;row<maxOff;row++){
+      html+='<div class="gsh-row" style="background:#12121288;">'
+        +'<div class="gsh-hd"></div>'
+        +DAYS.map((_,di)=>{
+          const name=offMap[di][row];
+          if(!name) return '<div class="gsh-cell gsh-empty" style="border-color:transparent"></div>';
+          const offEntry=schedule.find(s=>s.reviewer.name.replace('Madonna ','M.')===name||s.reviewer.name===name);
+          const rid=offEntry?offEntry.reviewer.id:'';
+          const editAttr=isManagerMode&&rid?' data-edit="1" data-rid="'+rid+'" data-di="'+di+'" data-sh="OFF" title="Click to assign shift" style="cursor:pointer;"':'';
+          return '<div class="gsh-cell'+(isManagerMode&&rid?' gsh-editable':'')+'" style="background:#1c1c1c;border-color:#2a354855;"'+editAttr+'>'
+            +'<span class="gsh-name" style="color:var(--mut2)">'+name+'</span>'
+            +(isManagerMode&&rid?'<span class="gsh-edit-btn" style="color:var(--mut2)">✎</span>':'')
+            +'</div>';
+        }).join('')
+        +'</div>';
+    }
+  }
+
+  // ── Footer note ──
+  const total=schedule.reduce((a,r)=>a+r.totalAssigned,0);
+  const otTotal=schedule.reduce((a,r)=>a+(r.totalAssigned-r.baseAssigned),0);
+  html+='<div class="gsh-footer">Reviewers: <b>'+schedule.length+'</b> · Total shifts: <b style="color:var(--grn)">'+total+'</b> · Overtime: <b style="color:#b5a4fc">'+otTotal+'</b>'
+    +'<span style="margin-left:auto;color:var(--mut);font-size:9px">⚠ All OFF Duty reviewers may be needed for OT in case of business need</span></div>';
+
+  html+='</div>';
+  out.innerHTML=html;
+
+  // ── Manager edit: delegate clicks on editable/addable cells ──
+  if(isManagerMode){
+    out.addEventListener('click', function handler(e){
+      const cell=e.target.closest('[data-edit],[data-edit-empty]');
+      if(!cell) return;
+      const di=parseInt(cell.dataset.di);
+      const sh=cell.dataset.sh;
+      const rid=cell.dataset.rid||null;
+      openEditModal(rid, di, sh);
+    }, {once:true}); // re-registered each render
+  }
+}
+
+
+// ══════════════════════════════════════════════════
+// RENDER DASHBOARD
+// ══════════════════════════════════════════════════
+function renderDash(){
+  const approved=requests.filter(r=>r.status==='approved');
+  const counts={M:0,M8:0,A:0,X12:0,X:0,N:0};
+  approved.forEach(r=>DAYS.forEach((_,i)=>{if(r.days[i])counts[r.days[i]]++;}));
+  Object.keys(counts).forEach(s=>{const el=document.getElementById('kv-'+s);if(el)el.textContent=counts[s];});
+
+  const covHtml=DAYS.map((d,di)=>{
+    const onDuty=schedule.length
+      ?schedule.filter(r=>r.sched[di]!=='OFF').length
+      :approved.filter(r=>r.days[di]).length;
+    const need=REQ.N[di]+REQ.M[di]+REQ.A[di]+REQ.X[di];
+    const cls=onDuty>=need?'ok':onDuty>=need*0.75?'wn':'lo';
+    return'<div class="cd"><div class="cdn">'+d+'</div><div class="cdv '+cls+'">'+onDuty+'</div><div class="cdk">need '+need+'</div></div>';
+  }).join('');
+  document.getElementById('db-cov').innerHTML=covHtml;
+
+  const totalSlots=Object.keys(REQ).reduce((a,sh)=>a+DAYS.reduce((b,_,di)=>b+REQ[sh][di],0),0);
+  const filledSlots=schedule.length
+    ?DAYS.reduce((a,_,di)=>a+['M','M8','A','X12','X','N'].filter(sh=>schedule.some(r=>r.sched[di]!=='OFF'&&r.sched[di].shift===sh)).length,0)
+    :0;
+  const pct=totalSlots?Math.round(filledSlots/totalSlots*100):0;
+  const pc=pct>=100?'var(--grn)':pct>=70?'var(--X)':'var(--red)';
+  document.getElementById('db-meter').innerHTML='<div class="smeter"><div class="sm-t">Schedule Slot Fill Rate</div>'
+    +'<div style="background:var(--sf2);border-radius:5px;height:20px;overflow:hidden;position:relative;border:1px solid var(--bd)">'
+    +'<div style="height:100%;width:'+pct+'%;background:'+pc+';transition:width .6s ease;border-radius:5px;opacity:.8"></div>'
+    +'<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:10.5px;font-weight:700;color:var(--txt);font-family:JetBrains Mono,monospace">'+pct+'% ('+filledSlots+'/'+totalSlots+' slots)</div>'
+    +'</div></div>';
+
+  const alerts=[];
+  if(isManagerMode){
+    const pend=requests.filter(r=>r.status==='pending').length;
+    if(pend)alerts.push({t:'w',m:'⏳ '+pend+' request(s) awaiting your approval.'});
+    if(!schedule.length&&approved.length)alerts.push({t:'i',m:'📋 Requests approved — click Auto-Generate Schedule to build the schedule.'});
+    const missing=getMissingSlots(approved);
+    if(missing.length)alerts.push({t:'w',m:'⚠️ '+missing.length+' slot(s) understaffed: '+missing.slice(0,4).join(', ')+(missing.length>4?'…':'')});
+    if(schedule.length&&!missing.length)alerts.push({t:'ok',m:'✅ All slots filled. Schedule is complete and ready to export.'});
+  }
+  document.getElementById('db-alerts').innerHTML=alerts.map(a=>'<div class="al al-'+a.t+'">'+a.m+'</div>').join('');
+}
+
+function getMissingSlots(approved){
+  const m=[];
+  DAYS.forEach((d,di)=>{
+    ['M','M8','A','X12','X','N'].forEach(sh=>{
+      const have=approved.filter(r=>r.days[di]===sh).length;
+      if(approved.length&&have<REQ[sh][di]) m.push(d+' '+SHIFTS[sh].name+' ('+have+'/'+REQ[sh][di]+')');
+    });
+  });
+  return m;
+}
+
+// ══════════════════════════════════════════════════
+// COVERAGE TABS
+// ══════════════════════════════════════════════════
+function covTab(el,tab){
+  document.querySelectorAll('#page-coverage .tab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  ['slots','matrix','conflicts'].forEach(t=>document.getElementById('cov-'+t).style.display=t===tab?'block':'none');
+  if(tab==='slots')renderCovSlots();
+  if(tab==='matrix')renderCovMatrix();
+  if(tab==='conflicts')renderCovConflicts();
+}
+
+function renderCovSlots(){
+  const approved=requests.filter(r=>r.status==='approved');
+  let html='<div class="tw"><table><thead><tr><th>Shift</th><th>Time (EGY)</th>'
+    +DAYS.map((d,di)=>'<th>'+d+'<br><span style="font-size:8px;color:var(--mut);font-weight:400">~'+DAY_LOADS[di]+'</span></th>').join('')
+    +'</tr></thead><tbody>';
+  ['M','M8','A','X12','X','N'].forEach(sh=>{
+    html+='<tr><td><span class="bdg b'+sh+'">'+SHIFTS[sh].emoji+' '+SHIFTS[sh].name+'</span></td>'
+      +'<td class="tag" style="color:'+SHIFTS[sh].col+'">'+SHIFTS[sh].time+'</td>';
+    DAYS.forEach((_,di)=>{
+      const h=approved.filter(r=>r.days[di]===sh).length;
+      const n=REQ[sh][di];
+      const cls=h>=n?'ok':h>0?'wn':'lo';
+      html+='<td style="text-align:center"><span class="'+cls+'" style="font-weight:700;font-size:12px">'+h+'</span><span style="color:var(--mut);font-size:9.5px">/'+n+'</span>'+(h<n?'<div style="font-size:8.5px;color:var(--red)">-'+(n-h)+'</div>':'')+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  document.getElementById('cov-slots').innerHTML=html;
+}
+
+function renderCovMatrix(){
+  const approved=requests.filter(r=>r.status==='approved');
+  const out=document.getElementById('cov-matrix');
+  if(!approved.length){out.innerHTML='<div class="empty"><div class="empty-i">⬡</div><div class="empty-t">No approved requests</div></div>';return;}
+  let html='<div class="tw"><table><thead><tr><th>Reviewer</th><th>Tier</th><th>Pref</th>'
+    +DAYS.map(d=>'<th>'+d+'</th>').join('')+'<th>Total</th></tr></thead><tbody>';
+  const sorted=[...approved].sort((a,b)=>a.reviewer.tier-b.reviewer.tier);
+  sorted.forEach(r=>{
+    const rv=r.reviewer;
+    const tc=TIER_COLS[rv.tier];
+    const total=DAYS.filter((_,i)=>r.days[i]).length;
+    const otNote=r.isOT?'<span class="bdg bOT" style="font-size:8.5px">OT</span>':'';
+    html+='<tr><td><b style="color:var(--txt)">'+rv.name+'</b><br><span class="tag" style="color:var(--mut2)">'+rv.id+'</span></td>'
+      +'<td><span style="color:'+tc+';font-weight:700;font-size:11px">T'+rv.tier+' · '+TIER_LABELS[rv.tier]+'</span></td>'
+      +'<td><span class="bdg b'+r.prefShift+'">'+SHIFTS[r.prefShift].emoji+' '+SHIFTS[r.prefShift].name+'</span></td>';
+    DAYS.forEach((_,i)=>{
+      const s=r.days[i];const p=r.prefs[i];
+      html+='<td style="text-align:center">'+(s?'<span class="bdg b'+s+'" style="font-size:8.5px;padding:1px 4px">'+s+(p?' #'+p:'')+'</span>':'<span style="color:var(--mut);font-size:10px">–</span>')+'</td>';
+    });
+    html+='<td style="text-align:center"><span style="color:'+(total>rv.base?'#b5a4fc':'var(--grn)')+';font-weight:700">'+total+'</span>'+otNote+'</td></tr>';
+  });
+  html+='</tbody></table></div>';
+  out.innerHTML=html;
+}
+
+function renderCovConflicts(){
+  const out=document.getElementById('cov-conflicts');
+  const errors=[],warnings=[];
+  requests.forEach(r=>{
+    const rv=r.reviewer;
+    const n=DAYS.filter((_,i)=>r.days[i]).length;
+    ['M','M8','A','X12','X','N'].forEach(sh=>{
+      const cnt=DAYS.filter((_,i)=>r.days[i]===sh).length;
+      if(cnt>2) errors.push(rv.name+': '+cnt+'× '+SHIFTS[sh].name+' requested — max 2/week per type.');
+    });
+    if(r.isOT) warnings.push(rv.name+': '+n+' shifts requested ('+rv.base+' base + '+(n-rv.base)+' overtime).');
+  });
+  const approved=requests.filter(r=>r.status==='approved');
+  getMissingSlots(approved).forEach(m=>warnings.push('Understaffed: '+m));
+  if(!errors.length&&!warnings.length){out.innerHTML='<div class="al al-ok">✓ No conflicts detected across approved requests.</div>';return;}
+  out.innerHTML=[
+    ...errors.map(e=>'<div class="al al-e">⚠ '+e+'</div>'),
+    ...warnings.map(w=>'<div class="al al-w">◆ '+w+'</div>'),
+  ].join('');
+}
+
+// ══════════════════════════════════════════════════
+// TEAM PAGE (manager only — shows tiers)
+// ══════════════════════════════════════════════════
+function renderTeam(){
+  const tiers={};
+  REVIEWERS.forEach(r=>{if(!tiers[r.tier])tiers[r.tier]=[];tiers[r.tier].push(r);});
+  let html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><div>';
+  html+='<div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:9px;">Seniority Tiers (Priority Order)</div>';
+  Object.keys(tiers).sort().forEach(tier=>{
+    const tc=TIER_COLS[tier];
+    const rvs=tiers[tier];
+    html+='<div class="tier-row">'
+      +'<div class="tier-badge" style="background:'+tc+'18;color:'+tc+';border:1px solid '+tc+'33">T'+tier+'</div>'
+      +'<div style="flex:1"><div class="tier-names">'+rvs.map(r=>r.name).join(' · ')+'</div>'
+      +'<div style="font-size:9.5px;color:var(--mut2);margin-top:1px">'+TIER_LABELS[tier]+'</div></div>'
+      +'<div class="tier-detail">'+rvs[0].base+' shifts/wk</div>'
+      +'</div>';
+  });
+
+  html+='</div><div>'
+    +'<div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:9px;">Rules &amp; Constraints</div>';
+
+  const rules=[
+    {c:'var(--N)',t:'Night shifts are filled last — after all daytime slots are assigned. Cannot be assigned as overtime.'},
+    {c:'var(--A)',t:'Max 2 shifts of the same type per week per reviewer.'},
+    {c:'var(--M)',t:'Bishoy: 3 base shifts/week. All other reviewers: 5 base shifts/week.'},
+    {c:'var(--X)',t:'Overtime assigned to most junior reviewers first when required slots are unfilled.'},
+    {c:'var(--grn)',t:'Seniority governs shift selection priority — Tier 1 picks first, Tier 5 last.'},
+  ];
+  rules.forEach(r=>{
+    html+='<div style="display:flex;gap:9px;align-items:flex-start;padding:8px 12px;background:var(--sf2);border:1px solid var(--bd);border-radius:7px;margin-bottom:5px;font-size:11.5px;color:var(--mut2);line-height:1.55;">'
+      +'<div style="width:3px;min-height:18px;border-radius:2px;background:'+r.c+';flex-shrink:0;margin-top:2px"></div>'
+      +r.t+'</div>';
+  });
+
+  html+='</div></div>';
+
+  html+='<div style="margin-top:18px;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:9px;">Reviewer Status This Week</div>';
+  html+='<div class="tw"><table><thead><tr><th>Reviewer</th><th>ID</th><th>Tier</th><th>Base</th><th>Request Status</th><th>Days Requested</th><th>Assigned</th></tr></thead><tbody>';
+
+  REVIEWERS.forEach(rv=>{
+    const tc=TIER_COLS[rv.tier];
+    const req=requests.find(r=>r.reviewer.id===rv.id);
+    const sch=schedule.find(r=>r.reviewer.id===rv.id);
+    const statusBdg=req?'<span class="bdg b'+req.status.substring(0,4)+'">'+req.status.toUpperCase()+'</span>':'<span class="bdg" style="background:var(--sf2);color:var(--mut);border-color:var(--bd)">NO REQUEST</span>';
+    const daysReq=req?DAYS.filter((_,i)=>req.days[i]).length:'—';
+    const assigned=sch?sch.totalAssigned+(sch.totalAssigned-sch.baseAssigned>0?' (+' +(sch.totalAssigned-sch.baseAssigned)+' OT)':''):'—';
+    html+='<tr><td><b style="color:var(--txt)">'+rv.name+'</b></td>'
+      +'<td class="tag" style="color:var(--mut2)">'+rv.id+'</td>'
+      +'<td><span style="color:'+tc+';font-weight:700">T'+rv.tier+'</span> <span style="color:var(--mut2);font-size:10px">'+TIER_LABELS[rv.tier]+'</span></td>'
+      +'<td style="color:var(--mut2)">'+rv.base+'</td>'
+      +'<td>'+statusBdg+'</td>'
+      +'<td style="text-align:center;font-weight:600">'+daysReq+'</td>'
+      +'<td style="text-align:center;font-weight:700;color:var(--grn)">'+assigned+'</td>'
+      +'</tr>';
+  });
+  html+='</tbody></table></div>';
+  document.getElementById('team-body').innerHTML=html;
+}
+
+// ══════════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════════
+function exportCSV(){
+  if(!schedule.length){toast('No schedule to export yet.','e');return;}
+
+  // Build shift→day→names lookup (same as renderSchedule)
+  const shiftKeys=['M','M8','A','X12','X','N'];
+  const shiftMap={};
+  shiftKeys.forEach(sh=>{ shiftMap[sh]=DAYS.map(()=>[]); });
+  const alMap=DAYS.map(()=>[]);
+  const offMap=DAYS.map(()=>[]);
+
+  schedule.forEach(r=>{
+    const name=r.reviewer.name;
+    DAYS.forEach((_,di)=>{
+      const a=r.sched[di];
+      if(a==='AL'){ alMap[di].push(name); return; }
+      if(!a||a==='OFF'){ offMap[di].push(name); return; }
+      if(typeof a==='object'&&a.shift) shiftMap[a.shift][di].push(name+(a.overtime?' (OT)':'')+(a.substituted?' (Sub)':''));
+    });
+  });
+
+  const LABELS={M:'6:00 AM TO 2:00 PM',M8:'8:00 AM TO 4:00 PM',A:'10:00 AM TO 6:00 PM',X12:'12:00 PM TO 8:00 PM',X:'2:00 PM TO 10:00 PM',N:'10:00 PM TO 6:00 AM (Night)'};
+  let csv='HUB ML 501 IP Team — Weekly Schedule\n';
+  csv+='Week: '+fmtWk(weekOffset)+' · Egypt Time (UTC+2)\n\n';
+  csv+=','+DAYS.join(',')+'\n';
+
+  shiftKeys.forEach(sh=>{
+    const slots=shiftMap[sh];
+    const maxRows=Math.max(1,...slots.map(a=>a.length));
+    csv+=LABELS[sh]+','+slots.map(arr=>arr[0]||'').join(',')+'\n';
+    for(let row=1;row<maxRows;row++){
+      csv+=','+slots.map(arr=>arr[row]||'').join(',')+'\n';
+    }
+    csv+='\n';
+  });
+
+  // Annual Leave
+  if(alMap.some(a=>a.length)){
+    const maxAL=Math.max(...alMap.map(a=>a.length));
+    csv+='Annual Leave,'+alMap.map(arr=>arr[0]||'').join(',')+'\n';
+    for(let row=1;row<maxAL;row++) csv+=','+alMap.map(arr=>arr[row]||'').join(',')+'\n';
+    csv+='\n';
+  }
+
+  // Off Duty
+  if(offMap.some(a=>a.length)){
+    const maxOff=Math.max(...offMap.map(a=>a.length));
+    csv+='Off Duty,'+offMap.map(arr=>arr[0]||'').join(',')+'\n';
+    for(let row=1;row<maxOff;row++) csv+=','+offMap.map(arr=>arr[row]||'').join(',')+'\n';
+    csv+='\n';
+  }
+
+  csv+='PS. All OFF Duty Reviewers may be needed for OT in case of business need\n';
+
+  const a=document.createElement('a');
+  // Use data URI instead of Blob URL — works from network shares and any origin
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent('\uFEFF'+csv);
+  a.download='MetlifeHUB_Schedule_'+fmtWk(weekOffset).replace(/ /g,'_').replace(/[–-]/g,'-')+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('Exported as CSV ✓','s');
+}
+
+// ══════════════════════════════════════════════════
+// MANAGER MANUAL SCHEDULE EDIT
+// ══════════════════════════════════════════════════
+function openEditModal(rid, di, currentSh){
+  const existing=document.getElementById('edit-modal');
+  if(existing) existing.remove();
+
+  // Find reviewer's schedule entry
+  const entry=rid ? schedule.find(s=>s.reviewer.id===rid) : null;
+  const reviewer=entry ? entry.reviewer : null;
+
+  // All reviewers available for reassignment (not on AL this day)
+  const available=schedule.filter(s=>!(s.request&&s.request.al&&s.request.al[di]));
+
+  const overlay=document.createElement('div');
+  overlay.id='edit-modal';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const SHIFT_COLS={M:'#52d986',M8:'#7efaaa',A:'#ff8c42',X12:'#fce98a',X:'#f5c842',N:'#60c6f8'};
+  const shiftOpts=Object.entries(SHIFTS).map(([k,v])=>
+    `<option value="${k}" ${k===currentSh?'selected':''}>${v.emoji} ${v.name} (${v.time})</option>`
+  ).join('');
+  const reviewerOpts=available.map(s=>
+    `<option value="${s.reviewer.id}" ${s.reviewer.id===rid?'selected':''}>${s.reviewer.name} (${TIER_LABELS[s.reviewer.tier]})</option>`
+  ).join('');
+
+  const dayName=DAYS[di];
+  const title=reviewer
+    ? `✎ Edit: ${reviewer.name} · ${dayName}`
+    : `＋ Assign to ${dayName} · ${SHIFTS[currentSh]?.name||'slot'}`;
+
+  const box=document.createElement('div');
+  box.style.cssText='background:var(--sf);border:1px solid var(--bd2);border-radius:14px;padding:24px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.6);';
+  box.innerHTML=`
+    <div style="font-size:14px;font-weight:800;color:var(--txt);margin-bottom:4px;">${title}</div>
+    <div style="font-size:11px;color:var(--mut2);margin-bottom:18px;">Manager override — changes are applied immediately to the schedule.</div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:10.5px;font-weight:700;color:var(--mut2);display:block;margin-bottom:5px;">REVIEWER</label>
+      <select id="em-reviewer" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd2);border-radius:8px;color:var(--txt);font-size:12px;font-family:Plus Jakarta Sans,sans-serif;">
+        ${reviewerOpts}
+      </select>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:10.5px;font-weight:700;color:var(--mut2);display:block;margin-bottom:5px;">SHIFT</label>
+      <select id="em-shift" style="width:100%;padding:9px 11px;background:var(--sf2);border:1px solid var(--bd2);border-radius:8px;color:var(--txt);font-size:12px;font-family:Plus Jakarta Sans,sans-serif;">
+        ${shiftOpts}
+        <option value="OFF" ${currentSh==='OFF'?'selected':''}>🔘 Mark as OFF</option>
+      </select>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mut2);cursor:pointer;">
+        <input type="checkbox" id="em-ot" style="accent-color:#b5a4fc;width:14px;height:14px;">
+        <span>Mark as <b style="color:#b5a4fc">Overtime (OT)</b></span>
+      </label>
+    </div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+      ${reviewer ? `<button id="em-remove" style="margin-right:auto;padding:8px 14px;border-radius:8px;border:1px solid #f0545433;background:#f0545411;color:#f05454;cursor:pointer;font-size:11px;font-weight:700;">✕ Remove shift</button>` : ''}
+      <button onclick="document.getElementById('edit-modal').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--mut2);cursor:pointer;font-size:12px;font-weight:600;">Cancel</button>
+      <button id="em-save" style="padding:8px 18px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-size:12px;font-weight:700;">✓ Save</button>
+    </div>`;
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  overlay.onclick=(e)=>{if(e.target===overlay)overlay.remove();};
+
+  // Pre-check OT if current assignment is OT
+  if(entry && entry.sched[di] && typeof entry.sched[di]==='object'){
+    document.getElementById('em-ot').checked=!!entry.sched[di].overtime;
+  }
+
+  // Remove shift button
+  const removeBtn=document.getElementById('em-remove');
+  if(removeBtn){
+    removeBtn.onclick=()=>{
+      if(!confirm('Remove '+reviewer.name+'\'s shift on '+dayName+'?')) return;
+      const e=schedule.find(s=>s.reviewer.id===rid);
+      if(e){ e.sched[di]='OFF'; e.totalAssigned=Math.max(0,e.totalAssigned-1); }
+      overlay.remove();
+      renderSchedule();
+      toast('Shift removed: '+reviewer.name+' · '+dayName,'i');
+      pushState();
+    };
+  }
+
+  // Save button
+  document.getElementById('em-save').onclick=()=>{
+    const newRid=document.getElementById('em-reviewer').value;
+    const newSh=document.getElementById('em-shift').value;
+    const isOT=document.getElementById('em-ot').checked;
+
+    // Remove from old reviewer if different
+    if(rid && rid!==newRid){
+      const oldEntry=schedule.find(s=>s.reviewer.id===rid);
+      if(oldEntry){ oldEntry.sched[di]='OFF'; oldEntry.totalAssigned=Math.max(0,oldEntry.totalAssigned-1); if(!isOT&&oldEntry.baseAssigned>0)oldEntry.baseAssigned--; }
+    }
+
+    // Assign to new reviewer
+    const newEntry=schedule.find(s=>s.reviewer.id===newRid);
+    if(newEntry){
+      const hadShift=newEntry.sched[di]&&newEntry.sched[di]!=='OFF'&&newEntry.sched[di]!=='AL';
+      if(newSh==='OFF'){
+        newEntry.sched[di]='OFF';
+        if(hadShift){ newEntry.totalAssigned=Math.max(0,newEntry.totalAssigned-1); if(!isOT&&newEntry.baseAssigned>0)newEntry.baseAssigned--; }
+      } else {
+        if(!hadShift) newEntry.totalAssigned++;
+        if(!isOT&&!hadShift) newEntry.baseAssigned++;
+        newEntry.sched[di]={shift:newSh, overtime:isOT, substituted:false, manualEdit:true};
+      }
+    }
+
+    overlay.remove();
+    renderSchedule();
+    const rv=schedule.find(s=>s.reviewer.id===newRid);
+    toast('✎ Schedule updated: '+(rv?rv.reviewer.name:'')+(newSh!=='OFF'?' → '+SHIFTS[newSh].name+' '+DAYS[di]:' → OFF on '+DAYS[di]),'s');
+    pushState();
+  };
+}
+
+// ══════════════════════════════════════════════════
+// SETTINGS PAGE
+// ══════════════════════════════════════════════════
+function renderSettings(){
+  const body=document.getElementById('settings-body');
+  if(!body)return;
+
+  const S=(label,content)=>`
+    <div style="background:var(--sf);border:1px solid var(--bd2);border-radius:12px;margin-bottom:16px;overflow:hidden;">
+      <div style="padding:12px 16px;background:var(--sf2);border-bottom:1px solid var(--bd);font-size:11px;font-weight:800;color:var(--mut2);text-transform:uppercase;letter-spacing:.08em;">${label}</div>
+      <div style="padding:16px;">${content}</div>
+    </div>`;
+
+  const inputStyle='width:100%;padding:8px 10px;background:var(--sf2);border:1px solid var(--bd2);border-radius:7px;color:var(--txt);font-size:12px;font-family:Plus Jakarta Sans,sans-serif;';
+  const btnStyle=(col='var(--accent)')=>`padding:7px 14px;border-radius:7px;border:none;background:${col};color:white;cursor:pointer;font-size:11px;font-weight:700;`;
+  const labelStyle='font-size:10px;font-weight:700;color:var(--mut2);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;';
+
+  // ── SECTION 1: Team Members ──
+  let teamRows=REVIEWERS.map((rv,i)=>`
+    <div style="display:grid;grid-template-columns:1fr 90px 70px 50px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd);">
+      <div>
+        <input id="rv-name-${i}" value="${rv.name}" style="${inputStyle}" placeholder="Full name">
+      </div>
+      <div>
+        <select id="rv-tier-${i}" style="${inputStyle}">
+          ${[1,2,3,4,5].map(t=>`<option value="${t}" ${rv.tier===t?'selected':''}>${t} — ${TIER_LABELS[t]}</option>`).join('')}
+        </select>
+      </div>
+      <div>
+        <input id="rv-base-${i}" type="number" min="1" max="7" value="${rv.base}" style="${inputStyle}" title="Base shifts per week">
+      </div>
+      <div style="font-size:9px;color:var(--mut2);font-family:JetBrains Mono,monospace;text-align:center;">${rv.id}</div>
+      <button onclick="saveReviewer(${i})" style="${btnStyle()};margin-right:4px;">Save</button>
+    </div>`).join('');
+
+  const teamSection=S('👥 Team Members — '+REVIEWERS.length+' reviewers',`
+    <div style="display:grid;grid-template-columns:1fr 90px 70px 50px auto;gap:8px;margin-bottom:6px;">
+      <span style="${labelStyle}">Name</span>
+      <span style="${labelStyle}">Tier</span>
+      <span style="${labelStyle}">Base shifts/wk</span>
+      <span style="${labelStyle}">ID</span>
+      <span></span>
+    </div>
+    ${teamRows}
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bd);">
+      <div style="font-size:11px;font-weight:700;color:var(--txt);margin-bottom:10px;">➕ Add New Reviewer</div>
+      <div style="display:grid;grid-template-columns:1fr 110px 80px auto;gap:8px;align-items:end;">
+        <div><label style="${labelStyle}">Full Name</label><input id="new-rv-name" style="${inputStyle}" placeholder="e.g. Sara Ahmed"></div>
+        <div><label style="${labelStyle}">Tier</label>
+          <select id="new-rv-tier" style="${inputStyle}">
+            ${[1,2,3,4,5].map(t=>`<option value="${t}">${t} — ${TIER_LABELS[t]}</option>`).join('')}
+          </select>
+        </div>
+        <div><label style="${labelStyle}">Shifts/week</label><input id="new-rv-base" type="number" min="1" max="7" value="5" style="${inputStyle}"></div>
+        <button onclick="addReviewer()" style="${btnStyle('#22543d')};background:#22543d;color:#52d986;">➕ Add</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--bd);">
+      <div style="font-size:11px;font-weight:700;color:var(--txt);margin-bottom:10px;">🗑 Remove Reviewer</div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="remove-rv-sel" style="${inputStyle}">
+          ${REVIEWERS.map((rv,i)=>`<option value="${i}">${rv.name} (${rv.id})</option>`).join('')}
+        </select>
+        <button onclick="removeReviewer()" style="${btnStyle('#7f1d1d')};background:#7f1d1d;color:#fca5a5;white-space:nowrap;">🗑 Remove</button>
+      </div>
+    </div>`);
+
+  // ── SECTION 2: Required Slots (REQ) ──
+  const shiftNames={M:'Early Morning 06–14',M8:'Morning 08–16',A:'Late Morning 10–18',X12:'Afternoon 12–20',X:'Midday 14–22',N:'Night 22–06'};
+  let reqRows=Object.entries(REQ).map(([sh,counts])=>`
+    <div style="display:grid;grid-template-columns:160px repeat(7,1fr) auto;gap:6px;align-items:center;padding:7px 0;border-bottom:1px solid var(--bd);">
+      <div style="font-size:10.5px;font-weight:700;color:var(--txt);">${SHIFTS[sh].emoji} ${shiftNames[sh]}</div>
+      ${DAYS.map((d,di)=>`
+        <div>
+          <div style="font-size:8px;color:var(--mut2);text-align:center;margin-bottom:2px;">${d}</div>
+          <input id="req-${sh}-${di}" type="number" min="0" max="10" value="${counts[di]}" 
+            style="${inputStyle}text-align:center;padding:5px 4px;">
+        </div>`).join('')}
+      <button onclick="saveReq('${sh}')" style="${btnStyle()};padding:5px 10px;">Save</button>
+    </div>`).join('');
+
+  const reqSection=S('📋 Required Slots per Shift per Day',`
+    <div style="font-size:10.5px;color:var(--mut2);margin-bottom:12px;line-height:1.6;">
+      How many reviewers are required for each shift on each day. Changing this affects auto-generate and coverage reports immediately.
+    </div>
+    ${reqRows}
+    <div style="margin-top:10px;">
+      <button onclick="saveAllReq()" style="${btnStyle('#22543d')};background:#22543d;color:#52d986;">💾 Save All Slot Counts</button>
+    </div>`);
+
+  // ── SECTION 3: Shift Timings ──
+  let shiftRows=Object.entries(SHIFTS).map(([sh,sv])=>`
+    <div style="display:grid;grid-template-columns:160px 100px 100px 120px auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--bd);">
+      <div style="font-size:10.5px;font-weight:700;color:${sv.col};">${sv.emoji} ${sv.name}</div>
+      <div>
+        <label style="${labelStyle}">Start (24h)</label>
+        <input id="sh-start-${sh}" type="number" min="0" max="23" value="${sv.start}" style="${inputStyle}text-align:center;">
+      </div>
+      <div>
+        <label style="${labelStyle}">End (24h)</label>
+        <input id="sh-end-${sh}" type="number" min="1" max="30" value="${sv.end}" style="${inputStyle}text-align:center;">
+      </div>
+      <div>
+        <label style="${labelStyle}">Display name</label>
+        <input id="sh-name-${sh}" value="${sv.name}" style="${inputStyle}">
+      </div>
+      <button onclick="saveShift('${sh}')" style="${btnStyle()};margin-top:14px;">Save</button>
+    </div>`).join('');
+
+  const shiftSection=S('🕐 Shift Times &amp; Names',`
+    <div style="font-size:10.5px;color:var(--mut2);margin-bottom:12px;line-height:1.6;">
+      Adjust shift start/end hours and display names. End hours &gt;24 means next day (e.g. 30 = 06:00 next day).
+    </div>
+    ${shiftRows}`);
+
+  // ── SECTION 4: Day Loads ──
+  let dayLoadRows=DAYS.map((d,di)=>`
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <label style="${labelStyle};text-align:center;">${d}</label>
+      <input id="dl-${di}" type="number" min="0" value="${DAY_LOADS[di]}" style="${inputStyle}text-align:center;width:80px;">
+    </div>`).join('');
+
+  const dayLoadSection=S('📊 Average Daily Ticket Loads',`
+    <div style="font-size:10.5px;color:var(--mut2);margin-bottom:12px;">Used for display and productivity calculations. Update from your actual data.</div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">${dayLoadRows}</div>
+    <button onclick="saveDayLoads()" style="${btnStyle()};margin-top:4px;">💾 Save Day Loads</button>`);
+
+  // ── SECTION 5: Manager PIN ──
+  const pinSection=S('🔐 Manager PIN',`
+    <div style="display:grid;grid-template-columns:200px auto;gap:10px;align-items:end;">
+      <div>
+        <label style="${labelStyle}">New PIN (4+ digits)</label>
+        <input id="new-pin" type="password" placeholder="Enter new PIN" style="${inputStyle}" maxlength="8">
+      </div>
+      <button onclick="changePin()" style="${btnStyle()}">🔐 Change PIN</button>
+    </div>
+    <div style="font-size:10px;color:var(--mut2);margin-top:8px;">Current PIN is stored locally in this session only. Share new PIN directly with your team's manager.</div>`);
+
+  // ── SECTION 6: Data Management ──
+  const dataSection=S('🗄 Data &amp; Schedule Management',`
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <button onclick="clearRequests()" style="${btnStyle('#78350f')};background:#78350f;color:#fcd34d;">🗑 Clear All Requests</button>
+      <button onclick="clearSchedule()" style="${btnStyle('#7f1d1d')};background:#7f1d1d;color:#fca5a5;">🗑 Clear Generated Schedule</button>
+      <button onclick="clearAll()" style="${btnStyle('#4a044e')};background:#4a044e;color:#e879f9;">⚠️ Reset Everything</button>
+      <button onclick="exportConfig()" style="${btnStyle('#1e3a5f')};background:#1e3a5f;color:#93c5fd;margin-left:auto;">📥 Export Config</button>
+      <button onclick="importConfigPrompt()" style="${btnStyle('#1e3a5f')};background:#1e3a5f;color:#93c5fd;">📤 Import Config</button>
+    </div>
+    <div style="margin-top:12px;font-size:10px;color:var(--mut2);line-height:1.8;">
+      <b style="color:var(--txt)">Export Config</b> — saves all team members, shift timings, and slot counts as a JSON file you can re-import later.<br>
+      <b style="color:var(--txt)">Reset Everything</b> — clears all requests and schedule data. Team members and settings are preserved.
+    </div>`);
+
+  body.innerHTML = teamSection + reqSection + shiftSection + dayLoadSection + pinSection + dataSection;
+}
+
+// ── Settings action functions ──
+
+function saveReviewer(i){
+  const name=document.getElementById('rv-name-'+i).value.trim();
+  const tier=parseInt(document.getElementById('rv-tier-'+i).value);
+  const base=parseInt(document.getElementById('rv-base-'+i).value);
+  if(!name){toast('Name cannot be empty','e');return;}
+  REVIEWERS[i]={...REVIEWERS[i], name, tier, base};
+  buildActiveReviewerDropdown();
+  buildReviewerDropdown();
+  renderTeam();
+  renderSettings();
+  pushState();
+  toast('✓ '+name+' updated','s');
+}
+
+function addReviewer(){
+  const name=document.getElementById('new-rv-name').value.trim();
+  const tier=parseInt(document.getElementById('new-rv-tier').value);
+  const base=parseInt(document.getElementById('new-rv-base').value);
+  if(!name){toast('Enter a name first','e');return;}
+  const existing=REVIEWERS.find(r=>r.name.toLowerCase()===name.toLowerCase());
+  if(existing){toast('Reviewer already exists','e');return;}
+  const maxNum=REVIEWERS.reduce((m,r)=>Math.max(m,parseInt(r.id.split('-')[1]||0)),0);
+  const newId='R-'+String(maxNum+1).padStart(2,'0');
+  REVIEWERS.push({name, id:newId, tier, base});
+  buildActiveReviewerDropdown();
+  buildReviewerDropdown();
+  renderTeam();
+  renderSettings();
+  pushState();
+  toast('➕ '+name+' added as '+newId,'s');
+}
+
+function removeReviewer(){
+  const idx=parseInt(document.getElementById('remove-rv-sel').value);
+  const rv=REVIEWERS[idx];
+  if(!rv){toast('Select a reviewer','e');return;}
+  if(!confirm('Remove '+rv.name+'? Their pending requests will also be removed.')){return;}
+  // Remove their requests
+  for(let i=requests.length-1;i>=0;i--){
+    if(requests[i].reviewer.id===rv.id) requests.splice(i,1);
+  }
+  // Remove from schedule
+  for(let i=schedule.length-1;i>=0;i--){
+    if(schedule[i].reviewer.id===rv.id) schedule.splice(i,1);
+  }
+  REVIEWERS.splice(idx,1);
+  buildActiveReviewerDropdown();
+  buildReviewerDropdown();
+  renderTeam();
+  renderApprovals();
+  renderDash();
+  renderSchedule();
+  renderSettings();
+  pushState();
+  toast('🗑 '+rv.name+' removed','i');
+}
+
+function saveReq(sh){
+  const newCounts=DAYS.map((_,di)=>{
+    const v=parseInt(document.getElementById('req-'+sh+'-'+di).value);
+    return isNaN(v)?REQ[sh][di]:Math.max(0,v);
+  });
+  REQ[sh]=newCounts;
+  toast('✓ '+SHIFTS[sh].name+' slot counts saved','s');
+  renderSettings();
+}
+
+function saveAllReq(){
+  Object.keys(REQ).forEach(sh=>{
+    const newCounts=DAYS.map((_,di)=>{
+      const el=document.getElementById('req-'+sh+'-'+di);
+      if(!el)return REQ[sh][di];
+      const v=parseInt(el.value);
+      return isNaN(v)?REQ[sh][di]:Math.max(0,v);
+    });
+    REQ[sh]=newCounts;
+  });
+  pushState();
+  toast('✓ All slot counts saved','s');
+}
+
+function saveShift(sh){
+  const start=parseInt(document.getElementById('sh-start-'+sh).value);
+  const end=parseInt(document.getElementById('sh-end-'+sh).value);
+  const name=document.getElementById('sh-name-'+sh).value.trim()||SHIFTS[sh].name;
+  if(isNaN(start)||isNaN(end)){toast('Invalid hours','e');return;}
+  SHIFTS[sh]={...SHIFTS[sh], start, end, name,
+    time: formatHour(start)+'–'+formatHour(end>23?end-24:end)};
+  buildShiftRef();
+  toast('✓ '+name+' timing updated','s');
+}
+
+function saveDayLoads(){
+  DAYS.forEach((_,di)=>{
+    const v=parseInt(document.getElementById('dl-'+di).value);
+    if(!isNaN(v)) DAY_LOADS[di]=v;
+  });
+  toast('✓ Day loads saved','s');
+}
+
+function changePin(){
+  const pin=document.getElementById('new-pin').value.trim();
+  if(pin.length<4){toast('PIN must be at least 4 digits','e');return;}
+  if(!/^\d+$/.test(pin)){toast('PIN must be digits only','e');return;}
+  window._managerPin=pin;
+  document.getElementById('new-pin').value='';
+  toast('🔐 Manager PIN changed','s');
+}
+
+function clearRequests(){
+  if(!confirm('Clear ALL submitted requests? This cannot be undone.'))return;
+  requests=[];
+  updatePendingBadge();
+  renderApprovals();
+  renderDash();
+  pushState();
+  toast('🗑 All requests cleared','i');
+}
+
+function clearSchedule(){
+  if(!confirm('Clear the generated schedule?'))return;
+  schedule=[];
+  renderSchedule();
+  renderDash();
+  pushState();
+  toast('🗑 Schedule cleared','i');
+}
+
+function clearAll(){
+  if(!confirm('⚠️ Reset ALL data — requests and schedule? Team config is kept.'))return;
+  requests=[];schedule=[];
+  updatePendingBadge();
+  renderApprovals();
+  renderDash();
+  renderSchedule();
+  pushState();
+  toast('⚠️ All data reset','w');
+}
+
+function exportConfig(){
+  const cfg={
+    version:1, exportedAt:new Date().toISOString(),
+    REVIEWERS, REQ,
+    SHIFTS:Object.fromEntries(Object.entries(SHIFTS).map(([k,v])=>[k,{...v}])),
+    DAY_LOADS:[...DAY_LOADS]
+  };
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(cfg,null,2));
+  a.download='MetlifeHUB_Config_'+new Date().toISOString().slice(0,10)+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('📥 Config exported','s');
+}
+
+function importConfigPrompt(){
+  const input=document.createElement('input');
+  input.type='file'; input.accept='.json';
+  input.onchange=e=>{
+    const file=e.target.files[0]; if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const cfg=JSON.parse(ev.target.result);
+        if(!cfg.version||!cfg.REVIEWERS||!cfg.REQ){toast('Invalid config file','e');return;}
+        if(!confirm('Import config? This will replace current team members, shifts and slot counts.'))return;
+        REVIEWERS.length=0; cfg.REVIEWERS.forEach(r=>REVIEWERS.push(r));
+        Object.keys(REQ).forEach(k=>delete REQ[k]);
+        Object.assign(REQ, cfg.REQ);
+        if(cfg.DAY_LOADS) cfg.DAY_LOADS.forEach((v,i)=>DAY_LOADS[i]=v);
+        if(cfg.SHIFTS) Object.entries(cfg.SHIFTS).forEach(([k,v])=>Object.assign(SHIFTS[k]||{},v));
+        buildActiveReviewerDropdown();
+        buildReviewerDropdown();
+        buildShiftRef();
+        renderTeam();
+        renderSettings();
+        renderDash();
+        pushState();
+        toast('📤 Config imported successfully','s');
+      }catch(err){toast('Failed to parse config: '+err.message,'e');}
+    };
+    reader.readAsText(file);
+  };
+  document.body.appendChild(input); input.click(); document.body.removeChild(input);
+}
+
+// ══════════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════════
+function toast(msg,type){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='sh t'+(type||'i');
+  clearTimeout(t._t);t._t=setTimeout(()=>t.className='',3500);
+}
+
+// ══════════════════════════════════════════════════
+// FIREBASE REST SYNC — No SDK needed, works everywhere
+// ══════════════════════════════════════════════════
+
+// ── Config — paste your Firebase project details here ──
+const FB_DB_URL = "https://ml-schedular-default-rtdb.firebaseio.com";
+const FB_API_KEY = "AIzaSyBjUYh2H6XTJlOSTSUr3b1A4m-uxB_5M64";
+
+let syncEnabled = false;
+let lastSyncTs = 0;
+let syncInterval = null;
+const SYNC_KEY = () => 'week_' + (weekOffset + 1000);
+
+// ── REST helpers ──
+async function fbGet(path) {
+  const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
+  const res = await fetch(url, {cache:'no-store'});
+  if (!res.ok) throw new Error('GET ' + res.status);
+  return res.json();
+}
+
+async function fbSet(path, data) {
+  const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) throw new Error('PUT ' + res.status);
+  return res.json();
+}
+
+// ── Init — just test connectivity ──
+function initFirebase() {
+  // Test with a real read — /ping won't exist so null is fine, just need no error
+  fbGet('/scheduler/ping')
+    .then(() => {
+      syncEnabled = true;
+      startSync();
+      updateSyncIndicator('connected');
+    })
+    .catch(e => {
+      console.warn('Firebase REST error:', e.message);
+      // Show the actual error in the indicator so user knows what's happening
+      const el = document.getElementById('sync-indicator');
+      if(el) el.innerHTML = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f05454;margin-right:5px;"></span><span title="'+e.message+'">Offline — '+e.message.slice(0,30)+'</span>';
+      syncEnabled = false;
+    });
+}
+
+// ── Push state ──
+async function pushState() {
+  if (!syncEnabled) return;
+  try {
+    const payload = {
+      requests, schedule, weekOffset,
+      lastUpdated: Date.now(),
+      lastUpdatedBy: activeReviewerId || 'manager'
+    };
+    await fbSet('/scheduler/' + SYNC_KEY(), payload);
+    lastSyncTs = payload.lastUpdated;
+    updateSyncIndicator('synced');
+  } catch(e) {
+    console.warn('Push failed:', e.message);
+    updateSyncIndicator('error');
+  }
+}
+
+// ── Pull state ──
+async function pullState(force = false) {
+  if (!syncEnabled) return;
+  try {
+    const payload = await fbGet('/scheduler/' + SYNC_KEY());
+    if (!payload) return;
+    if (!force && payload.lastUpdated <= lastSyncTs) return;
+    if (!force && payload.lastUpdatedBy === (activeReviewerId || 'manager') &&
+        Date.now() - payload.lastUpdated < 3000) return;
+    requests = payload.requests || [];
+    schedule = payload.schedule || [];
+    lastSyncTs = payload.lastUpdated;
+    renderDash();
+    renderApprovals();
+    renderMySchedule();
+    renderSchedule();
+    renderTeam();
+    updatePendingBadge();
+    onActiveReviewerChange();
+    updateSyncIndicator('synced');
+    if (Date.now() - payload.lastUpdated < 10000)
+      showSyncPulse('↓ Updated by ' + (payload.lastUpdatedBy || 'team'));
+  } catch(e) {
+    console.warn('Pull failed:', e.message);
+    updateSyncIndicator('error');
+  }
+}
+
+// ── Auto-sync every 10s ──
+function startSync() {
+  if (syncInterval) clearInterval(syncInterval);
+  syncInterval = setInterval(() => pullState(), 10000);
+  pullState(true);
+}
+
+// ── Manual sync ──
+function manualSync() {
+  updateSyncIndicator('syncing');
+  pullState(true).then(() => toast('↕ Synced with team','s'));
+}
+
+// ── Sync indicator UI ──
+function updateSyncIndicator(state) {
+  const el = document.getElementById('sync-indicator');
+  if (!el) return;
+  const states = {
+    connected: {dot:'#34d870', text:'Live'},
+    synced:    {dot:'#34d870', text:'Synced'},
+    syncing:   {dot:'#f59e0b', text:'Syncing…'},
+    error:     {dot:'#f05454', text:'Sync error'},
+    offline:   {dot:'#627a94', text:'Local only'},
+    setup:     {dot:'#f59e0b', text:'Setup needed'}
+  };
+  const s = states[state] || states.offline;
+  el.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${s.dot};margin-right:5px;box-shadow:0 0 5px ${s.dot}"></span>${s.text}`;
+}
+
+function showSyncPulse(msg) {
+  const el = document.getElementById('sync-pulse');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.opacity = '1';
+  setTimeout(() => el.style.opacity = '0', 2500);
+}
+
+// pushState is called directly inside each action function
+
+// ── Setup modal — shown when Firebase not configured ──
+function showSetupModal() {
+  const existing = document.getElementById('setup-modal');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'setup-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--sf);border:1px solid var(--bd2);border-radius:14px;padding:28px;max-width:500px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.7);">
+      <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:6px;">🔗 Multi-User Sync Setup</div>
+      <div style="font-size:11.5px;color:var(--mut2);line-height:1.7;margin-bottom:18px;">
+        To enable live sync across your team, you need a free Firebase project.<br>
+        <b style="color:var(--txt)">One-time setup by your IT/manager — takes 3 minutes:</b>
+      </div>
+      <ol style="font-size:11.5px;color:var(--mut2);line-height:2;padding-left:18px;margin-bottom:18px;">
+        <li>Go to <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a></li>
+        <li>Create project → name it <b style="color:var(--txt)">metlife-hub-scheduler</b></li>
+        <li>Add a Web App → copy the firebaseConfig object</li>
+        <li>Go to <b style="color:var(--txt)">Realtime Database</b> → Create database → Start in test mode</li>
+        <li>Open this HTML file in Notepad → find <b style="color:#f5c842">FB_CONFIG</b> → paste your config</li>
+        <li>Save → share the file with your team</li>
+      </ol>
+      <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:12px;font-size:10.5px;color:#52d986;font-family:JetBrains Mono,monospace;margin-bottom:18px;">
+        💡 Free tier: 1GB storage · 10GB/month transfer · 100k concurrent users<br>
+        ✅ Works from shared network folders, USB drives, email attachments
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button onclick="document.getElementById('setup-modal').remove();updateSyncIndicator('offline');" 
+          style="padding:9px 18px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--mut2);cursor:pointer;font-size:12px;font-weight:600;">
+          Continue without sync
+        </button>
+        <button onclick="window.open('https://console.firebase.google.com','_blank');document.getElementById('setup-modal').remove();"
+          style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-size:12px;font-weight:700;">
+          Open Firebase Console →
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+// ══════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════
+buildShiftRef();
+updateWeek();
+buildPrioGrid();
+buildActiveReviewerDropdown();
+document.getElementById('wb-title').textContent = getGreeting()+'!';
+renderDash();
+renderApprovals();
+renderTeam();
+
+// Start Firebase REST sync
+initFirebase();
+
+</script>
+</body>
+</html>
