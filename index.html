@@ -559,35 +559,7 @@ let customTimings={};
 // Firebase stubs removed — async functions hoist correctly
 
 
-// ── DEMO DATA: all 10 reviewers have submitted & been approved ──
-(function injectDemo(){
-  const SK=['M','M8','A','X12','X','N'];
-  const di=[0,1,2,3,4,5,6];
-  function rnd(a){return a[Math.floor(Math.random()*a.length)];}
-  function samp(a,n){return[...a].sort(()=>Math.random()-.5).slice(0,n);}
-  // Realistic scenario: Ibram has Sun+Wed AL, Farah has Tue AL
-  const alMap={'R-03':[1,4],'R-06':[3]};
-  REVIEWERS.forEach((rv,i)=>{
-    const alDays=alMap[rv.id]||[];
-    const pool=di.filter(d=>!alDays.includes(d));
-    const effBase=Math.max(0,rv.base-alDays.length);
-    const workDays=samp(pool,effBase);
-    const ps=i<3?['M','M8','A']:i<6?['A','X12','X']:['X','N','M8'];
-    const days={},prefs={},al={},ot={};
-    di.forEach(d=>{
-      al[d]=alDays.includes(d); ot[d]=false;
-      if(al[d]){days[d]='AL';prefs[d]=[];}
-      else if(workDays.includes(d)){const s=samp(ps,2);days[d]=s[0];prefs[d]=s;}
-      else{days[d]=null;prefs[d]=[];}
-    });
-    requests.push({
-      id:'REQ-'+String(i+1).padStart(3,'0'),
-      reviewer:rv,prefShift:rnd(ps),notes:i===0?'Prefer not Monday':'',
-      days,prefs,al,ot,status:'approved',
-      submittedAt:new Date(Date.now()-Math.random()*86400000*3).toISOString()
-    });
-  });
-})();
+// Demo data removed — all data comes from Firebase sync
 
 // ══════════════════════════════════════════════════
 // MANAGER MODE TOGGLE
@@ -1165,6 +1137,10 @@ function submitReq(){
   const req={reviewer:rv,prefShift,notes,days,prefs,al,ot,status:'pending',submitted:new Date().toLocaleTimeString('en-GB'),isOT:workCount>rv.base};
   if(existing>=0){requests[existing]=req;toast('Request updated — awaiting manager approval ✓','i');}
   else{requests.push(req);toast('Submitted! Your request is awaiting manager approval ✓','s');}
+
+  // Make sure activeReviewerId is set so pushState tags the push correctly
+  activeReviewerId = rvId;
+  document.getElementById('active-reviewer').value = rvId;
 
   updatePendingBadge();resetForm();renderDash();
   onActiveReviewerChange();
@@ -2558,7 +2534,8 @@ async function pullState(force = false) {
     const payload = await fbGet('/scheduler/' + SYNC_KEY());
     if (!payload) return;
     if (!force && payload.lastUpdated <= lastSyncTs) return;
-    if (!force && payload.lastUpdatedBy === (activeReviewerId || 'manager') &&
+    // Only skip if WE were the last one to push (within 3s), identified by our own reviewerId
+    if (!force && activeReviewerId && payload.lastUpdatedBy === activeReviewerId &&
         Date.now() - payload.lastUpdated < 3000) return;
     requests = payload.requests || [];
     schedule = payload.schedule || [];
