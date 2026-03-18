@@ -688,7 +688,7 @@ function onActiveReviewerChange(){
 }
 
 function renderMyKpis(rv){
-  const myReq = requests.find(r=>r.reviewer.id===rv.id);
+  const myReq = requests.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
   const mySchEntry = schedule.find(r=>r.reviewer.id===rv.id);
   const shiftsReq = myReq ? DAYS.filter((_,i)=>myReq.days[i]).length : 0;
   const shiftsAsgn = mySchEntry ? mySchEntry.totalAssigned : 0;
@@ -716,7 +716,7 @@ function renderMySchedule(){
   const rv = REVIEWERS.find(r=>r.id===activeReviewerId);
   if(!rv){return;}
   sub.textContent = rv.name+' · '+fmtWk(weekOffset);
-  const myReq = requests.find(r=>r.reviewer.id===rv.id);
+  const myReq = requests.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
   const mySchEntry = schedule.find(r=>r.reviewer.id===rv.id);
 
   if(!myReq){
@@ -837,7 +837,7 @@ function onNameChange(){
   const fmax=document.getElementById('f-max');
   if(rv){
     fmax.textContent=rv.base;
-    const existing=requests.find(r=>r.reviewer.id===id&&r.status!=='rejected');
+    const existing=requests.find(r=>r&&r.reviewer&&r.reviewer.id===id&&r.status!=='rejected');
     info.style.display='block';
     if(existing){
       info.style.color='var(--org)';
@@ -1133,7 +1133,7 @@ function submitReq(){
   if(pureOffDays>maxOffAllowed){toast('Max '+maxOffAllowed+' days off allowed (excluding annual leave). You have '+pureOffDays+'.','e');return;}
   const prefShift=document.getElementById('f-shift')?document.getElementById('f-shift').value:'';
 
-  const existing=requests.findIndex(r=>r.reviewer.id===rvId);
+  const existing=requests.findIndex(r=>r&&r.reviewer&&r.reviewer.id===rvId);
   const req={reviewer:rv,prefShift,notes,days,prefs,al,ot,status:'pending',submitted:new Date().toLocaleTimeString('en-GB'),isOT:workCount>rv.base};
   if(existing>=0){requests[existing]=req;toast('Request updated — awaiting manager approval ✓','i');}
   else{requests.push(req);toast('Submitted! Your request is awaiting manager approval ✓','s');}
@@ -1163,8 +1163,8 @@ function resetForm(){
 // ══════════════════════════════════════════════════
 // APPROVALS
 // ══════════════════════════════════════════════════
-function approve(idx){requests[idx].status='approved';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': approved ✓','s');onActiveReviewerChange();pushState();}
-function reject(idx){requests[idx].status='rejected';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': rejected','i');onActiveReviewerChange();pushState();}
+function approve(idx){if(!requests[idx])return;requests[idx].status='approved';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': approved ✓','s');onActiveReviewerChange();pushState();}
+function reject(idx){if(!requests[idx])return;requests[idx].status='rejected';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': rejected','i');onActiveReviewerChange();pushState();}
 function approveAll(){
   const p=requests.filter(r=>r.status==='pending');
   if(!p.length){toast('No pending requests to approve.','i');return;}
@@ -1175,7 +1175,7 @@ function approveAll(){
 function delReq(idx){const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
 
 function updatePendingBadge(){
-  const n=requests.filter(r=>r.status==='pending').length;
+  const n=requests.filter(r=>r&&r.status==='pending').length;
   const nb=document.getElementById('nb');nb.textContent=n;nb.style.display=n?'inline':'none';
   document.getElementById('ap-sub').textContent=n+' pending · week of '+fmtWk(weekOffset);
 }
@@ -1193,7 +1193,7 @@ function renderApprovals(){
       const rv=r.reviewer;
       const sc=TIER_COLS[rv.tier];
       const dc=DAYS.filter((_,i)=>r.days[i]).length;
-      const db=DAYS.map((d,i)=>{if(!r.days||!r.days[i])return'';const s=r.days[i];const p=r.prefs&&r.prefs[i];
+      const db=DAYS.map((d,i)=>{const _days=r.days||{};const _prefs=r.prefs||{};if(!_days[i])return'';const s=_days[i];const p=_prefs[i];
         // Show custom timing if exists
         const ct = r.customTimings && r.customTimings[i];
         const timeNote = ct ? ' '+formatHour(ct.startHour) : '';
@@ -1231,7 +1231,7 @@ function renderApprovals(){
 //  4. Day boundary = 06:00–06:00
 // ══════════════════════════════════════════════════
 function autoGen(){
-  const approved=requests.filter(r=>r.status==='approved');
+  const approved=requests.filter(r=>r&&r.reviewer&&r.status==='approved');
   if(!approved.length){
     const p=requests.filter(r=>r.status==='pending').length;
     if(p)toast(p+' request(s) still need approval first.','w');
@@ -1595,7 +1595,7 @@ function renderSchedule(){
     const name=r.reviewer.name.replace('Madonna ','M.');
     let hasAnyShift=false;
     DAYS.forEach((_,di)=>{
-      const a=r.sched[di];
+      const a=(r.sched||{})[di];
       if(a==='AL'){ alMap[di].push(name); hasAnyShift=true; return; }
       if(!a||a==='OFF'){ offMap[di].push(name); return; }
       if(typeof a==='object'&&a.shift){
@@ -1733,7 +1733,7 @@ function renderSchedule(){
 // RENDER DASHBOARD
 // ══════════════════════════════════════════════════
 function renderDash(){
-  const approved=requests.filter(r=>r.status==='approved');
+  const approved=requests.filter(r=>r&&r.reviewer&&r.status==='approved');
   const counts={M:0,M8:0,A:0,X12:0,X:0,N:0};
   approved.forEach(r=>DAYS.forEach((_,i)=>{if(r.days[i])counts[r.days[i]]++;}));
   Object.keys(counts).forEach(s=>{const el=document.getElementById('kv-'+s);if(el)el.textContent=counts[s];});
@@ -1796,7 +1796,7 @@ function covTab(el,tab){
 }
 
 function renderCovSlots(){
-  const approved=requests.filter(r=>r.status==='approved');
+  const approved=requests.filter(r=>r&&r.reviewer&&r.status==='approved');
   let html='<div class="tw"><table><thead><tr><th>Shift</th><th>Time (EGY)</th>'
     +DAYS.map((d,di)=>'<th>'+d+'<br><span style="font-size:8px;color:var(--mut);font-weight:400">~'+DAY_LOADS[di]+'</span></th>').join('')
     +'</tr></thead><tbody>';
@@ -1816,7 +1816,7 @@ function renderCovSlots(){
 }
 
 function renderCovMatrix(){
-  const approved=requests.filter(r=>r.status==='approved');
+  const approved=requests.filter(r=>r&&r.reviewer&&r.status==='approved');
   const out=document.getElementById('cov-matrix');
   if(!approved.length){out.innerHTML='<div class="empty"><div class="empty-i">⬡</div><div class="empty-t">No approved requests</div></div>';return;}
   let html='<div class="tw"><table><thead><tr><th>Reviewer</th><th>Tier</th><th>Pref</th>'
@@ -1852,7 +1852,7 @@ function renderCovConflicts(){
     });
     if(r.isOT) warnings.push(rv.name+': '+n+' shifts requested ('+rv.base+' base + '+(n-rv.base)+' overtime).');
   });
-  const approved=requests.filter(r=>r.status==='approved');
+  const approved=requests.filter(r=>r&&r.reviewer&&r.status==='approved');
   getMissingSlots(approved).forEach(m=>warnings.push('Understaffed: '+m));
   if(!errors.length&&!warnings.length){out.innerHTML='<div class="al al-ok">✓ No conflicts detected across approved requests.</div>';return;}
   out.innerHTML=[
@@ -1903,8 +1903,8 @@ function renderTeam(){
 
   REVIEWERS.forEach(rv=>{
     const tc=TIER_COLS[rv.tier];
-    const req=requests.find(r=>r.reviewer.id===rv.id);
-    const sch=schedule.find(r=>r.reviewer.id===rv.id);
+    const req=requests.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
+    const sch=schedule.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
     const statusBdg=req?'<span class="bdg b'+req.status.substring(0,4)+'">'+req.status.toUpperCase()+'</span>':'<span class="bdg" style="background:var(--sf2);color:var(--mut);border-color:var(--bd)">NO REQUEST</span>';
     const daysReq=req?DAYS.filter((_,i)=>req.days[i]).length:'—';
     const assigned=sch?sch.totalAssigned+(sch.totalAssigned-sch.baseAssigned>0?' (+' +(sch.totalAssigned-sch.baseAssigned)+' OT)':''):'—';
@@ -1937,7 +1937,7 @@ function exportCSV(){
   schedule.forEach(r=>{
     const name=r.reviewer.name;
     DAYS.forEach((_,di)=>{
-      const a=r.sched[di];
+      const a=(r.sched||{})[di];
       if(a==='AL'){ alMap[di].push(name); return; }
       if(!a||a==='OFF'){ offMap[di].push(name); return; }
       if(typeof a==='object'&&a.shift) shiftMap[a.shift][di].push(name+(a.overtime?' (OT)':'')+(a.substituted?' (Sub)':''));
@@ -2460,143 +2460,253 @@ function toast(msg,type){
 }
 
 // ══════════════════════════════════════════════════
-// FIREBASE REST SYNC — No SDK needed, works everywhere
+// FIREBASE SYNC ENGINE — v5 complete rewrite
+// Handles: array/object coercion, null safety, skip
+// logic, render safety, connectivity, all edge cases
 // ══════════════════════════════════════════════════
 
-// ── Config — paste your Firebase project details here ──
 const FB_DB_URL = "https://ml-schedular-default-rtdb.firebaseio.com";
 const FB_API_KEY = "AIzaSyBjUYh2H6XTJlOSTSUr3b1A4m-uxB_5M64";
 
 let syncEnabled = false;
 let lastSyncTs = 0;
 let syncInterval = null;
+let pushPending = false;
+
+// Always use weekOffset=0 key — week navigation is display only
+// This ensures everyone reads/writes the same Firebase node
 const SYNC_KEY = () => 'week_' + (weekOffset + 1000);
 
-// ── REST helpers ──
+// ── Firebase REST helpers ──
 async function fbGet(path) {
   const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
-  const res = await fetch(url, {cache:'no-store'});
-  if (!res.ok) throw new Error('GET ' + res.status);
-  return res.json();
+  const res = await fetch(url, {cache: 'no-store'});
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  if (!text || text === 'null') return null;
+  return JSON.parse(text);
 }
 
 async function fbSet(path, data) {
   const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
   const res = await fetch(url, {
     method: 'PUT',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify(data)
+    headers: {'Content-Type': 'application/json'},
+    body: data
   });
-  if (!res.ok) throw new Error('PUT ' + res.status);
-  return res.json();
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('PUT ' + res.status + ': ' + errText.slice(0,100));
+  }
+  return true;
 }
 
-// ── Init — just test connectivity ──
-function initFirebase() {
-  // Test with a real read — /ping won't exist so null is fine, just need no error
-  fbGet('/scheduler/ping')
-    .then(() => {
-      syncEnabled = true;
-      startSync();
-      updateSyncIndicator('connected');
-    })
-    .catch(e => {
-      console.warn('Firebase REST error:', e.message);
-      // Show the actual error in the indicator so user knows what's happening
-      const el = document.getElementById('sync-indicator');
-      if(el) el.innerHTML = '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#f05454;margin-right:5px;"></span><span title="'+e.message+'">Offline — '+e.message.slice(0,30)+'</span>';
-      syncEnabled = false;
-    });
+// ── Deep sanitize data from Firebase ──
+// Firebase: arrays → objects with numeric string keys {"0":{...},"1":{...}}
+// Firebase: null values stay null (not undefined)
+// Firebase: missing keys are absent entirely
+function sanitizeFromFirebase(payload) {
+  if (!payload || typeof payload !== 'object') return {requests:[], schedule:[]};
+
+  function toArr(v) {
+    if (!v) return [];
+    if (Array.isArray(v)) return v.filter(Boolean);
+    if (typeof v === 'object') {
+      return Object.keys(v)
+        .filter(k => !isNaN(Number(k)))
+        .sort((a, b) => Number(a) - Number(b))
+        .map(k => v[k])
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  function toObj(v) {
+    if (!v || typeof v !== 'object') return {};
+    // Convert numeric-keyed object to plain object (keys stay as-is)
+    const out = {};
+    Object.keys(v).forEach(k => { out[k] = v[k]; });
+    return out;
+  }
+
+  function sanitizeRequest(r) {
+    if (!r || typeof r !== 'object') return null;
+    if (!r.reviewer || !r.reviewer.id) return null; // invalid, skip
+    return {
+      id: r.id || ('REQ-' + r.reviewer.id),
+      reviewer: {
+        id: r.reviewer.id || '',
+        name: r.reviewer.name || '',
+        tier: r.reviewer.tier || 5,
+        base: r.reviewer.base || 5
+      },
+      status: r.status || 'pending',
+      prefShift: r.prefShift || '',
+      notes: r.notes || '',
+      submitted: r.submitted || '',
+      submittedAt: r.submittedAt || '',
+      isOT: !!r.isOT,
+      days: toObj(r.days),
+      prefs: toObj(r.prefs),
+      al: toObj(r.al),
+      ot: toObj(r.ot)
+    };
+  }
+
+  function sanitizeScheduleEntry(s) {
+    if (!s || typeof s !== 'object') return null;
+    if (!s.reviewer || !s.reviewer.id) return null;
+    return {
+      reviewer: {
+        id: s.reviewer.id || '',
+        name: s.reviewer.name || '',
+        tier: s.reviewer.tier || 5,
+        base: s.reviewer.base || 5
+      },
+      sched: toObj(s.sched),
+      totalAssigned: s.totalAssigned || 0,
+      baseAssigned: s.baseAssigned || 0
+    };
+  }
+
+  const rawRequests = toArr(payload.requests);
+  const rawSchedule = toArr(payload.schedule);
+
+  return {
+    requests: rawRequests.map(sanitizeRequest).filter(Boolean),
+    schedule: rawSchedule.map(sanitizeScheduleEntry).filter(Boolean),
+    lastUpdated: payload.lastUpdated || 0,
+    lastUpdatedBy: payload.lastUpdatedBy || ''
+  };
 }
 
-// ── Push state ──
+// ── Serialize state for push — clean JSON safe for Firebase ──
+function serializeForFirebase() {
+  // JSON stringify+parse removes undefined, converts Sets etc.
+  return JSON.stringify({
+    requests: requests || [],
+    schedule: schedule || [],
+    weekOffset: weekOffset || 0,
+    lastUpdated: Date.now(),
+    lastUpdatedBy: activeReviewerId || 'manager',
+    v: 5  // version tag for debugging
+  });
+}
+
+// ── Push state to Firebase ──
 async function pushState() {
   if (!syncEnabled) return;
+  if (pushPending) return; // prevent concurrent pushes
+  pushPending = true;
   try {
-    const payload = JSON.parse(JSON.stringify({
-      requests: requests || [],
-      schedule: schedule || [],
-      weekOffset: weekOffset || 0,
-      lastUpdated: Date.now(),
-      lastUpdatedBy: activeReviewerId || 'manager'
-    }));
-    await fbSet('/scheduler/' + SYNC_KEY(), payload);
-    lastSyncTs = payload.lastUpdated;
+    updateSyncIndicator('syncing');
+    const serialized = serializeForFirebase();
+    const parsed = JSON.parse(serialized); // verify it parses cleanly
+    await fbSet('/scheduler/' + SYNC_KEY(), serialized);
+    lastSyncTs = parsed.lastUpdated;
     updateSyncIndicator('synced');
+    console.log('[Sync] Pushed', parsed.requests.length, 'requests by', parsed.lastUpdatedBy);
   } catch(e) {
-    console.warn('Push failed:', e.message);
+    console.error('[Sync] Push failed:', e.message);
     updateSyncIndicator('error');
+    toast('Sync error — check connection','e');
+  } finally {
+    pushPending = false;
   }
 }
 
-// ── Pull state ──
+// ── Pull state from Firebase ──
 async function pullState(force = false) {
   if (!syncEnabled) return;
   try {
-    const payload = await fbGet('/scheduler/' + SYNC_KEY());
-    if (!payload) return;
-    if (!force && payload.lastUpdated <= lastSyncTs) return;
-    // Only skip if WE were the last one to push (within 3s), identified by our own reviewerId
-    if (!force && activeReviewerId && payload.lastUpdatedBy === activeReviewerId &&
-        Date.now() - payload.lastUpdated < 3000) return;
-    // Sanitize requests coming from Firebase (nulls, missing fields)
-    requests = (payload.requests || []).map(r => ({
-      ...r,
-      days: r.days || {},
-      prefs: r.prefs || {},
-      al: r.al || {},
-      ot: r.ot || {},
-      reviewer: r.reviewer || {}
-    }));
-    schedule = (payload.schedule || []).map(s => ({
-      ...s,
-      sched: s.sched || {},
-      reviewer: s.reviewer || {}
-    }));
-    lastSyncTs = payload.lastUpdated;
-    renderDash();
-    renderApprovals();
-    renderMySchedule();
-    renderSchedule();
-    renderTeam();
-    updatePendingBadge();
-    onActiveReviewerChange();
+    const raw = await fbGet('/scheduler/' + SYNC_KEY());
+    if (!raw) {
+      console.log('[Sync] No data in Firebase yet');
+      return;
+    }
+
+    // Skip if we already have this version
+    if (!force && raw.lastUpdated && raw.lastUpdated <= lastSyncTs) return;
+
+    // Skip if WE just pushed this exact update (avoid re-render loop)
+    // Only skip if activeReviewerId is set AND matches AND very recent
+    if (!force && activeReviewerId && activeReviewerId !== 'manager'
+        && raw.lastUpdatedBy === activeReviewerId
+        && (Date.now() - raw.lastUpdated) < 2000) {
+      console.log('[Sync] Skipping own recent push');
+      return;
+    }
+
+    const clean = sanitizeFromFirebase(raw);
+    console.log('[Sync] Pulled', clean.requests.length, 'requests, by', raw.lastUpdatedBy);
+
+    requests = clean.requests;
+    schedule = clean.schedule;
+    lastSyncTs = raw.lastUpdated || Date.now();
+
+    // Re-render everything safely
+    try { renderDash(); } catch(e) { console.error('renderDash:', e); }
+    try { renderApprovals(); } catch(e) { console.error('renderApprovals:', e); }
+    try { renderMySchedule(); } catch(e) { console.error('renderMySchedule:', e); }
+    try { renderSchedule(); } catch(e) { console.error('renderSchedule:', e); }
+    try { renderTeam(); } catch(e) { console.error('renderTeam:', e); }
+    try { updatePendingBadge(); } catch(e) { console.error('updatePendingBadge:', e); }
+    try { onActiveReviewerChange(); } catch(e) { console.error('onActiveReviewerChange:', e); }
+
     updateSyncIndicator('synced');
-    if (Date.now() - payload.lastUpdated < 10000)
-      showSyncPulse('↓ Updated by ' + (payload.lastUpdatedBy || 'team'));
+    if ((Date.now() - (raw.lastUpdated || 0)) < 15000) {
+      showSyncPulse('↓ ' + (raw.lastUpdatedBy || 'team') + ' updated');
+    }
   } catch(e) {
-    console.warn('Pull failed:', e.message);
+    console.error('[Sync] Pull failed:', e.message);
     updateSyncIndicator('error');
   }
 }
 
-// ── Auto-sync every 10s ──
+// ── Start auto-sync polling every 5s (faster than 10s) ──
 function startSync() {
   if (syncInterval) clearInterval(syncInterval);
-  syncInterval = setInterval(() => pullState(), 10000);
-  pullState(true);
+  syncInterval = setInterval(() => pullState(false), 5000);
+  pullState(true); // immediate pull on start
 }
 
-// ── Manual sync ──
+// ── Manual sync button ──
 function manualSync() {
   updateSyncIndicator('syncing');
-  pullState(true).then(() => toast('↕ Synced with team','s'));
+  pullState(true).then(() => toast('↕ Synced with team', 's'));
+}
+
+// ── Init Firebase connection ──
+function initFirebase() {
+  updateSyncIndicator('syncing');
+  fbGet('/scheduler/ping')
+    .then(() => {
+      syncEnabled = true;
+      updateSyncIndicator('connected');
+      startSync();
+    })
+    .catch(e => {
+      console.warn('[Firebase] Connection failed:', e.message);
+      syncEnabled = false;
+      updateSyncIndicator('error');
+      const el = document.getElementById('sync-indicator');
+      if (el) el.title = e.message;
+    });
 }
 
 // ── Sync indicator UI ──
 function updateSyncIndicator(state) {
   const el = document.getElementById('sync-indicator');
   if (!el) return;
-  const states = {
-    connected: {dot:'#34d870', text:'Live'},
-    synced:    {dot:'#34d870', text:'Synced'},
-    syncing:   {dot:'#f59e0b', text:'Syncing…'},
-    error:     {dot:'#f05454', text:'Sync error'},
-    offline:   {dot:'#627a94', text:'Local only'},
-    setup:     {dot:'#f59e0b', text:'Setup needed'}
+  const map = {
+    connected: ['#34d870', 'Live'],
+    synced:    ['#34d870', 'Synced'],
+    syncing:   ['#f59e0b', 'Syncing…'],
+    error:     ['#f05454', 'Sync error'],
+    offline:   ['#627a94', 'Offline'],
   };
-  const s = states[state] || states.offline;
-  el.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${s.dot};margin-right:5px;box-shadow:0 0 5px ${s.dot}"></span>${s.text}`;
+  const [dot, text] = map[state] || map.offline;
+  el.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${dot};margin-right:5px;box-shadow:0 0 5px ${dot}40"></span>${text}`;
 }
 
 function showSyncPulse(msg) {
@@ -2604,49 +2714,7 @@ function showSyncPulse(msg) {
   if (!el) return;
   el.textContent = msg;
   el.style.opacity = '1';
-  setTimeout(() => el.style.opacity = '0', 2500);
-}
-
-// pushState is called directly inside each action function
-
-// ── Setup modal — shown when Firebase not configured ──
-function showSetupModal() {
-  const existing = document.getElementById('setup-modal');
-  if (existing) existing.remove();
-  const overlay = document.createElement('div');
-  overlay.id = 'setup-modal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  overlay.innerHTML = `
-    <div style="background:var(--sf);border:1px solid var(--bd2);border-radius:14px;padding:28px;max-width:500px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.7);">
-      <div style="font-size:16px;font-weight:800;color:var(--txt);margin-bottom:6px;">🔗 Multi-User Sync Setup</div>
-      <div style="font-size:11.5px;color:var(--mut2);line-height:1.7;margin-bottom:18px;">
-        To enable live sync across your team, you need a free Firebase project.<br>
-        <b style="color:var(--txt)">One-time setup by your IT/manager — takes 3 minutes:</b>
-      </div>
-      <ol style="font-size:11.5px;color:var(--mut2);line-height:2;padding-left:18px;margin-bottom:18px;">
-        <li>Go to <a href="https://console.firebase.google.com" target="_blank" style="color:var(--accent)">console.firebase.google.com</a></li>
-        <li>Create project → name it <b style="color:var(--txt)">metlife-hub-scheduler</b></li>
-        <li>Add a Web App → copy the firebaseConfig object</li>
-        <li>Go to <b style="color:var(--txt)">Realtime Database</b> → Create database → Start in test mode</li>
-        <li>Open this HTML file in Notepad → find <b style="color:#f5c842">FB_CONFIG</b> → paste your config</li>
-        <li>Save → share the file with your team</li>
-      </ol>
-      <div style="background:var(--sf2);border:1px solid var(--bd);border-radius:8px;padding:12px;font-size:10.5px;color:#52d986;font-family:JetBrains Mono,monospace;margin-bottom:18px;">
-        💡 Free tier: 1GB storage · 10GB/month transfer · 100k concurrent users<br>
-        ✅ Works from shared network folders, USB drives, email attachments
-      </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button onclick="document.getElementById('setup-modal').remove();updateSyncIndicator('offline');" 
-          style="padding:9px 18px;border-radius:8px;border:1px solid var(--bd2);background:transparent;color:var(--mut2);cursor:pointer;font-size:12px;font-weight:600;">
-          Continue without sync
-        </button>
-        <button onclick="window.open('https://console.firebase.google.com','_blank');document.getElementById('setup-modal').remove();"
-          style="padding:9px 18px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-size:12px;font-weight:700;">
-          Open Firebase Console →
-        </button>
-      </div>
-    </div>`;
-  document.body.appendChild(overlay);
+  setTimeout(() => { el.style.opacity = '0'; }, 3000);
 }
 
 // ══════════════════════════════════════════════════
@@ -2656,12 +2724,12 @@ buildShiftRef();
 updateWeek();
 buildPrioGrid();
 buildActiveReviewerDropdown();
-document.getElementById('wb-title').textContent = getGreeting()+'!';
+document.getElementById('wb-title').textContent = getGreeting() + '!';
 renderDash();
 renderApprovals();
 renderTeam();
 
-// Start Firebase REST sync
+// Boot Firebase
 initFirebase();
 
 </script>
