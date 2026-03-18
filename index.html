@@ -2513,11 +2513,13 @@ function initFirebase() {
 async function pushState() {
   if (!syncEnabled) return;
   try {
-    const payload = {
-      requests, schedule, weekOffset,
+    const payload = JSON.parse(JSON.stringify({
+      requests: requests || [],
+      schedule: schedule || [],
+      weekOffset: weekOffset || 0,
       lastUpdated: Date.now(),
       lastUpdatedBy: activeReviewerId || 'manager'
-    };
+    }));
     await fbSet('/scheduler/' + SYNC_KEY(), payload);
     lastSyncTs = payload.lastUpdated;
     updateSyncIndicator('synced');
