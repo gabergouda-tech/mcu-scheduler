@@ -1193,7 +1193,7 @@ function renderApprovals(){
       const rv=r.reviewer;
       const sc=TIER_COLS[rv.tier];
       const dc=DAYS.filter((_,i)=>r.days[i]).length;
-      const db=DAYS.map((d,i)=>{if(!r.days[i])return'';const s=r.days[i];const p=r.prefs[i];
+      const db=DAYS.map((d,i)=>{if(!r.days||!r.days[i])return'';const s=r.days[i];const p=r.prefs&&r.prefs[i];
         // Show custom timing if exists
         const ct = r.customTimings && r.customTimings[i];
         const timeNote = ct ? ' '+formatHour(ct.startHour) : '';
@@ -2539,8 +2539,20 @@ async function pullState(force = false) {
     // Only skip if WE were the last one to push (within 3s), identified by our own reviewerId
     if (!force && activeReviewerId && payload.lastUpdatedBy === activeReviewerId &&
         Date.now() - payload.lastUpdated < 3000) return;
-    requests = payload.requests || [];
-    schedule = payload.schedule || [];
+    // Sanitize requests coming from Firebase (nulls, missing fields)
+    requests = (payload.requests || []).map(r => ({
+      ...r,
+      days: r.days || {},
+      prefs: r.prefs || {},
+      al: r.al || {},
+      ot: r.ot || {},
+      reviewer: r.reviewer || {}
+    }));
+    schedule = (payload.schedule || []).map(s => ({
+      ...s,
+      sched: s.sched || {},
+      reviewer: s.reviewer || {}
+    }));
     lastSyncTs = payload.lastUpdated;
     renderDash();
     renderApprovals();
