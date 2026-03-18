@@ -1138,13 +1138,16 @@ function submitReq(){
   if(existing>=0){requests[existing]=req;toast('Request updated — awaiting manager approval ✓','i');}
   else{requests.push(req);toast('Submitted! Your request is awaiting manager approval ✓','s');}
 
-  // Make sure activeReviewerId is set so pushState tags the push correctly
+  // Set activeReviewerId
   activeReviewerId = rvId;
   document.getElementById('active-reviewer').value = rvId;
 
   updatePendingBadge();resetForm();renderDash();
   onActiveReviewerChange();
-  pushState();
+
+  // Write THIS reviewer's request directly to Firebase under their own key
+  // This avoids overwriting other reviewers' data
+  pushMyRequest(rvId, req);
 }
 
 function resetForm(){
@@ -1172,7 +1175,20 @@ function approveAll(){
   toast(p.length+' request(s) approved ✓','s');
   updatePendingBadge();renderApprovals();renderDash();onActiveReviewerChange();pushState();
 }
-function delReq(idx){const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
+function delReq(idx){
+  if(!requests[idx])return;
+  const n=requests[idx].reviewer.name;
+  const rvId=requests[idx].reviewer.id;
+  requests.splice(idx,1);
+  updatePendingBadge();renderApprovals();renderDash();
+  toast('Removed request for '+n,'i');
+  // Delete from Firebase directly
+  if(syncEnabled&&rvId){
+    const url=FB_DB_URL+'/scheduler/'+SYNC_KEY()+'/requests/'+rvId+'.json?auth='+FB_API_KEY;
+    fetch(url,{method:'DELETE'}).catch(e=>console.error('Delete failed:',e));
+  }
+  pushState();
+}
 
 function updatePendingBadge(){
   const n=requests.filter(r=>r&&r.status==='pending').length;
@@ -2478,6 +2494,21 @@ let pushPending = false;
 const SYNC_KEY = () => 'week_' + (weekOffset + 1000);
 
 // ── Firebase REST helpers ──
+async function fbPatch(path, data) {
+  const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
+  const body = typeof data === 'string' ? data : JSON.stringify(data);
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: body
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('PATCH ' + res.status + ': ' + errText.slice(0,100));
+  }
+  return true;
+}
+
 async function fbGet(path) {
   const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
   const res = await fetch(url, {cache: 'no-store'});
@@ -2489,10 +2520,11 @@ async function fbGet(path) {
 
 async function fbSet(path, data) {
   const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
+  const body = typeof data === 'string' ? data : JSON.stringify(data);
   const res = await fetch(url, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
-    body: data
+    body: body
   });
   if (!res.ok) {
     const errText = await res.text();
@@ -2531,14 +2563,14 @@ function sanitizeFromFirebase(payload) {
 
   function sanitizeRequest(r) {
     if (!r || typeof r !== 'object') return null;
-    if (!r.reviewer || !r.reviewer.id) return null; // invalid, skip
+    if (!r.reviewer || !r.reviewer.id) return null;
     return {
       id: r.id || ('REQ-' + r.reviewer.id),
       reviewer: {
         id: r.reviewer.id || '',
         name: r.reviewer.name || '',
-        tier: r.reviewer.tier || 5,
-        base: r.reviewer.base || 5
+        tier: Number(r.reviewer.tier) || 5,
+        base: Number(r.reviewer.base) || 5
       },
       status: r.status || 'pending',
       prefShift: r.prefShift || '',
@@ -2560,17 +2592,20 @@ function sanitizeFromFirebase(payload) {
       reviewer: {
         id: s.reviewer.id || '',
         name: s.reviewer.name || '',
-        tier: s.reviewer.tier || 5,
-        base: s.reviewer.base || 5
+        tier: Number(s.reviewer.tier) || 5,
+        base: Number(s.reviewer.base) || 5
       },
       sched: toObj(s.sched),
-      totalAssigned: s.totalAssigned || 0,
-      baseAssigned: s.baseAssigned || 0
+      totalAssigned: Number(s.totalAssigned) || 0,
+      baseAssigned: Number(s.baseAssigned) || 0
     };
   }
 
-  const rawRequests = toArr(payload.requests);
-  const rawSchedule = toArr(payload.schedule);
+  // requests & schedule stored as keyed objects {R-01:{...}} OR arrays — handle both
+  const rawReqSrc = payload.requests || {};
+  const rawSchedSrc = payload.schedule || {};
+  const rawRequests = Array.isArray(rawReqSrc) ? rawReqSrc : Object.values(rawReqSrc);
+  const rawSchedule = Array.isArray(rawSchedSrc) ? rawSchedSrc : Object.values(rawSchedSrc);
 
   return {
     requests: rawRequests.map(sanitizeRequest).filter(Boolean),
@@ -2593,23 +2628,60 @@ function serializeForFirebase() {
   });
 }
 
-// ── Push state to Firebase ──
+// ── Push a single reviewer's request to Firebase ──
+// Each reviewer writes ONLY their own slot: /requests/R-XX
+// This means no one ever overwrites anyone else's data
+async function pushMyRequest(rvId, req) {
+  if (!syncEnabled) { toast('Not connected to sync','e'); return; }
+  try {
+    updateSyncIndicator('syncing');
+    const clean = JSON.parse(JSON.stringify(req));
+    // PATCH to /requests so we only touch our own slot, not anyone else's
+    await fbPatch('/scheduler/' + SYNC_KEY() + '/requests', {[rvId]: clean});
+    // Also update the metadata
+    await fbPatch('/scheduler/' + SYNC_KEY(), {
+      lastUpdated: Date.now(),
+      lastUpdatedBy: rvId,
+      weekOffset: weekOffset||0,
+      v: 6
+    });
+    updateSyncIndicator('synced');
+    showSyncPulse('✓ Request saved');
+    console.log('[Sync] Saved request for', rvId);
+  } catch(e) {
+    console.error('[Sync] pushMyRequest failed:', e.message);
+    updateSyncIndicator('error');
+    toast('Failed to save — check connection','e');
+  }
+}
+
+// ── Push full state (used by manager actions: approve, reject, schedule) ──
 async function pushState() {
   if (!syncEnabled) return;
-  if (pushPending) return; // prevent concurrent pushes
+  if (pushPending) return;
   pushPending = true;
   try {
     updateSyncIndicator('syncing');
-    const serialized = serializeForFirebase();
-    const parsed = JSON.parse(serialized); // verify it parses cleanly
-    await fbSet('/scheduler/' + SYNC_KEY(), serialized);
-    lastSyncTs = parsed.lastUpdated;
+    // Write requests as individual keyed entries to avoid array issues
+    const reqMap = {};
+    (requests||[]).forEach(r => { if(r&&r.reviewer&&r.reviewer.id) reqMap[r.reviewer.id] = JSON.parse(JSON.stringify(r)); });
+    const schedMap = {};
+    (schedule||[]).forEach(s => { if(s&&s.reviewer&&s.reviewer.id) schedMap[s.reviewer.id] = JSON.parse(JSON.stringify(s)); });
+    const payload = {
+      requests: reqMap,
+      schedule: schedMap,
+      weekOffset: weekOffset||0,
+      lastUpdated: Date.now(),
+      lastUpdatedBy: activeReviewerId||'manager',
+      v: 6
+    };
+    await fbSet('/scheduler/' + SYNC_KEY(), JSON.stringify(payload));
+    lastSyncTs = payload.lastUpdated;
     updateSyncIndicator('synced');
-    console.log('[Sync] Pushed', parsed.requests.length, 'requests by', parsed.lastUpdatedBy);
+    console.log('[Sync] pushState: wrote', Object.keys(reqMap).length, 'requests');
   } catch(e) {
-    console.error('[Sync] Push failed:', e.message);
+    console.error('[Sync] pushState failed:', e.message);
     updateSyncIndicator('error');
-    toast('Sync error — check connection','e');
   } finally {
     pushPending = false;
   }
