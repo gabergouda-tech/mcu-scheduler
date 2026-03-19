@@ -1138,16 +1138,13 @@ function submitReq(){
   if(existing>=0){requests[existing]=req;toast('Request updated — awaiting manager approval ✓','i');}
   else{requests.push(req);toast('Submitted! Your request is awaiting manager approval ✓','s');}
 
-  // Set activeReviewerId
+  // Make sure activeReviewerId is set so pushState tags the push correctly
   activeReviewerId = rvId;
   document.getElementById('active-reviewer').value = rvId;
 
   updatePendingBadge();resetForm();renderDash();
   onActiveReviewerChange();
-
-  // Write THIS reviewer's request directly to Firebase under their own key
-  // This avoids overwriting other reviewers' data
-  pushMyRequest(rvId, req);
+  pushState();
 }
 
 function resetForm(){
@@ -1175,20 +1172,7 @@ function approveAll(){
   toast(p.length+' request(s) approved ✓','s');
   updatePendingBadge();renderApprovals();renderDash();onActiveReviewerChange();pushState();
 }
-function delReq(idx){
-  if(!requests[idx])return;
-  const n=requests[idx].reviewer.name;
-  const rvId=requests[idx].reviewer.id;
-  requests.splice(idx,1);
-  updatePendingBadge();renderApprovals();renderDash();
-  toast('Removed request for '+n,'i');
-  // Delete from Firebase directly
-  if(syncEnabled&&rvId){
-    const url=FB_DB_URL+'/scheduler/'+SYNC_KEY()+'/requests/'+rvId+'.json?auth='+FB_API_KEY;
-    fetch(url,{method:'DELETE'}).catch(e=>console.error('Delete failed:',e));
-  }
-  pushState();
-}
+function delReq(idx){const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
 
 function updatePendingBadge(){
   const n=requests.filter(r=>r&&r.status==='pending').length;
@@ -2476,184 +2460,276 @@ function toast(msg,type){
 }
 
 // ══════════════════════════════════════════════════
-// FIREBASE SYNC — uses Firebase JS SDK v9 compat
-// Real-time listener: no polling, no REST bugs
+// FIREBASE SYNC ENGINE — v6 keyed-map rewrite
+// ROOT FIX: Store requests & schedule as keyed maps
+// (by reviewer ID), never as arrays. Firebase cannot
+// corrupt {R-01:{...}, R-02:{...}} the way it corrupts
+// arrays. On pull, convert maps back to arrays.
 // ══════════════════════════════════════════════════
 
 const FB_DB_URL = "https://ml-schedular-default-rtdb.firebaseio.com";
 const FB_API_KEY = "AIzaSyBjUYh2H6XTJlOSTSUr3b1A4m-uxB_5M64";
-const WEEK_PATH = () => 'scheduler/week_' + (weekOffset + 1000);
 
-let db = null;           // Firebase database reference
 let syncEnabled = false;
-let unsubscribe = null;  // Real-time listener handle
+let lastSyncTs = 0;
+let syncInterval = null;
 let pushPending = false;
 
-// ── Load Firebase SDK and connect ──
-function initFirebase() {
-  updateSyncIndicator('syncing');
+const SYNC_KEY = () => 'week_' + (weekOffset + 1000);
 
-  // Load Firebase compat SDK from CDN
-  const script1 = document.createElement('script');
-  script1.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js';
-  script1.onload = () => {
-    const script2 = document.createElement('script');
-    script2.src = 'https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js';
-    script2.onload = () => bootFirebase();
-    script2.onerror = () => { updateSyncIndicator('error'); console.error('Failed to load Firebase DB SDK'); };
-    document.head.appendChild(script2);
-  };
-  script1.onerror = () => { updateSyncIndicator('error'); console.error('Failed to load Firebase App SDK'); };
-  document.head.appendChild(script1);
-}
-
-function bootFirebase() {
-  try {
-    const app = firebase.initializeApp({
-      apiKey: FB_API_KEY,
-      databaseURL: FB_DB_URL,
-      projectId: "ml-schedular"
-    });
-    db = firebase.database(app);
-    syncEnabled = true;
-    updateSyncIndicator('connected');
-    startListener();
-    console.log('[Firebase] Connected');
-  } catch(e) {
-    console.error('[Firebase] Boot failed:', e);
-    updateSyncIndicator('error');
+// ── Firebase REST helpers ──
+// fbGet: returns parsed JSON object (or null)
+async function fbGet(path) {
+  const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
+  const res = await fetch(url, {cache: 'no-store'});
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const text = await res.text();
+  if (!text || text === 'null') return null;
+  const parsed = JSON.parse(text);
+  // Guard: if Firebase returned a string (double-serialized legacy data), parse again
+  if (typeof parsed === 'string') {
+    try { return JSON.parse(parsed); } catch(e) { return null; }
   }
+  return parsed;
 }
 
-// ── Real-time listener — fires instantly when ANY data changes ──
-function startListener() {
-  if (unsubscribe) unsubscribe();
-  const ref = db.ref(WEEK_PATH());
-  ref.on('value', snapshot => {
-    try {
-      const raw = snapshot.val();
-      console.log('[Firebase] Received update:', raw ? 'has data' : 'empty');
-      if (!raw) return;
-
-      const reqRaw = raw.requests || {};
-      const schedRaw = raw.schedule || {};
-
-      // Convert keyed objects to arrays — works for both {R-01:{}} and [{},{}]
-      const toArr = v => Array.isArray(v) ? v : Object.values(v||{});
-
-      requests = toArr(reqRaw).filter(r => r && r.reviewer && r.reviewer.id).map(r => ({
-        id: r.id || 'REQ-' + r.reviewer.id,
-        reviewer: r.reviewer,
-        status: r.status || 'pending',
-        prefShift: r.prefShift || '',
-        notes: r.notes || '',
-        submitted: r.submitted || '',
-        isOT: !!r.isOT,
-        days: r.days || {},
-        prefs: r.prefs || {},
-        al: r.al || {},
-        ot: r.ot || {}
-      }));
-
-      schedule = toArr(schedRaw).filter(s => s && s.reviewer && s.reviewer.id).map(s => ({
-        reviewer: s.reviewer,
-        sched: s.sched || {},
-        totalAssigned: s.totalAssigned || 0,
-        baseAssigned: s.baseAssigned || 0
-      }));
-
-      console.log('[Firebase] Loaded', requests.length, 'requests,', schedule.length, 'schedule entries');
-
-      // Re-render safely
-      try { renderDash(); } catch(e) { console.error('renderDash:', e); }
-      try { renderApprovals(); } catch(e) { console.error('renderApprovals:', e); }
-      try { renderMySchedule(); } catch(e) { console.error('renderMySchedule:', e); }
-      try { renderSchedule(); } catch(e) { console.error('renderSchedule:', e); }
-      try { updatePendingBadge(); } catch(e) { console.error('updatePendingBadge:', e); }
-      try { onActiveReviewerChange(); } catch(e) {}
-
-      updateSyncIndicator('synced');
-      showSyncPulse('↓ Live update received');
-    } catch(e) {
-      console.error('[Firebase] Listener error:', e);
-    }
-  }, err => {
-    console.error('[Firebase] Listener failed:', err);
-    updateSyncIndicator('error');
+// fbSet: accepts a plain JS object, stringifies it once, sends it
+async function fbSet(path, dataObj) {
+  const url = FB_DB_URL + path + '.json?auth=' + FB_API_KEY;
+  const body = JSON.stringify(dataObj); // single serialization, always
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: body
   });
-  unsubscribe = () => ref.off('value');
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error('PUT ' + res.status + ': ' + errText.slice(0,120));
+  }
+  return true;
 }
 
-// ── Reviewer submits their own request ──
-// Writes ONLY to their own slot — never touches other reviewers
-async function pushMyRequest(rvId, req) {
-  if (!syncEnabled || !db) {
-    toast('Not connected — try refreshing', 'e');
-    return;
+// ── Convert keyed map from Firebase → array ──
+// Firebase stores {R-01:{...}, R-02:{...}} — we need [{...}, {...}]
+// Also handles: already-an-array (legacy), null, numeric keys
+function mapToArray(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.filter(Boolean);
+  if (typeof v === 'object') {
+    return Object.keys(v).map(k => v[k]).filter(Boolean);
   }
-  try {
-    updateSyncIndicator('syncing');
-    const clean = JSON.parse(JSON.stringify(req));
-    await db.ref(WEEK_PATH() + '/requests/' + rvId).set(clean);
-    console.log('[Firebase] Saved request for', rvId);
-    updateSyncIndicator('synced');
-    showSyncPulse('✓ Request saved');
-  } catch(e) {
-    console.error('[Firebase] pushMyRequest failed:', e);
-    updateSyncIndicator('error');
-    toast('Failed to save request — check connection', 'e');
-  }
+  return [];
 }
 
-// ── Manager pushes full state (approve, reject, generate schedule) ──
+// ── Safely read an object's sub-fields (Firebase may drop empty objects) ──
+function safeObj(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out = {};
+  Object.keys(v).forEach(k => { if (v[k] !== null && v[k] !== undefined) out[k] = v[k]; });
+  return out;
+}
+
+// ── Restore a value that should be an array (Firebase: ["M","A"] → {"0":"M","1":"A"}) ──
+function restoreArray(v) {
+  if (!v) return null;
+  if (Array.isArray(v)) return v.length ? v : null;
+  if (typeof v === 'object') {
+    const keys = Object.keys(v).filter(k => !isNaN(Number(k)));
+    if (!keys.length) return null;
+    return keys.sort((a,b) => Number(a) - Number(b)).map(k => v[k]);
+  }
+  return null;
+}
+
+// ── Restore the prefs map: {dayIndex: array-of-shifts} ──
+// Each value is either null or an array like ["M","A"]
+function safePrefs(v) {
+  const obj = safeObj(v);
+  const out = {};
+  Object.keys(obj).forEach(k => { out[k] = restoreArray(obj[k]); });
+  return out;
+}
+
+// ── Deep-clean a single request coming from Firebase ──
+function cleanRequest(r) {
+  if (!r || typeof r !== 'object') return null;
+  if (!r.reviewer || !r.reviewer.id) return null;
+  return {
+    id: r.id || ('REQ-' + r.reviewer.id),
+    reviewer: {
+      id: r.reviewer.id,
+      name: r.reviewer.name || '',
+      tier: Number(r.reviewer.tier) || 5,
+      base: Number(r.reviewer.base) || 5
+    },
+    status: r.status || 'pending',
+    prefShift: r.prefShift || '',
+    notes: r.notes || '',
+    submitted: r.submitted || '',
+    submittedAt: r.submittedAt || '',
+    isOT: !!r.isOT,
+    days: safeObj(r.days),
+    prefs: safePrefs(r.prefs),
+    al: safeObj(r.al),
+    ot: safeObj(r.ot)
+  };
+}
+
+// ── Deep-clean a single schedule entry from Firebase ──
+function cleanScheduleEntry(s) {
+  if (!s || typeof s !== 'object') return null;
+  if (!s.reviewer || !s.reviewer.id) return null;
+  return {
+    reviewer: {
+      id: s.reviewer.id,
+      name: s.reviewer.name || '',
+      tier: Number(s.reviewer.tier) || 5,
+      base: Number(s.reviewer.base) || 5
+    },
+    sched: safeObj(s.sched),
+    totalAssigned: Number(s.totalAssigned) || 0,
+    baseAssigned: Number(s.baseAssigned) || 0
+  };
+}
+
+// ── Deep-clone + strip undefined/functions for safe Firebase write ──
+function deepClean(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+// ── Build the payload object to push ──
+// KEY DESIGN: requests stored as {reviewerId: requestObj}
+//             schedule stored as {reviewerId: schedObj}
+// Firebase preserves string-keyed objects perfectly.
+function buildPayload() {
+  const reqMap = {};
+  (requests || []).forEach(r => {
+    if (r && r.reviewer && r.reviewer.id) {
+      reqMap[r.reviewer.id] = deepClean(r);
+    }
+  });
+  const schedMap = {};
+  (schedule || []).forEach(s => {
+    if (s && s.reviewer && s.reviewer.id) {
+      schedMap[s.reviewer.id] = deepClean(s);
+    }
+  });
+  return {
+    requests: reqMap,
+    schedule: schedMap,
+    weekOffset: weekOffset || 0,
+    lastUpdated: Date.now(),
+    lastUpdatedBy: activeReviewerId || 'manager',
+    v: 6
+  };
+}
+
+// ── Push state to Firebase ──
 async function pushState() {
-  if (!syncEnabled || !db) return;
+  if (!syncEnabled) return;
   if (pushPending) return;
   pushPending = true;
   try {
     updateSyncIndicator('syncing');
-    // Build keyed objects — Firebase stores these reliably
-    const reqMap = {};
-    (requests || []).forEach(r => {
-      if (r && r.reviewer && r.reviewer.id) {
-        reqMap[r.reviewer.id] = JSON.parse(JSON.stringify(r));
-      }
-    });
-    const schedMap = {};
-    (schedule || []).forEach(s => {
-      if (s && s.reviewer && s.reviewer.id) {
-        schedMap[s.reviewer.id] = JSON.parse(JSON.stringify(s));
-      }
-    });
-    await db.ref(WEEK_PATH()).set({
-      requests: reqMap,
-      schedule: schedMap,
-      weekOffset: weekOffset || 0,
-      lastUpdatedBy: activeReviewerId || 'manager',
-      lastUpdated: Date.now()
-    });
-    console.log('[Firebase] pushState: wrote', Object.keys(reqMap).length, 'requests');
+    const payload = buildPayload();
+    await fbSet('/scheduler/' + SYNC_KEY(), payload);
+    lastSyncTs = payload.lastUpdated;
     updateSyncIndicator('synced');
+    console.log('[Sync] Pushed', Object.keys(payload.requests).length, 'requests by', payload.lastUpdatedBy);
   } catch(e) {
-    console.error('[Firebase] pushState failed:', e);
+    console.error('[Sync] Push failed:', e.message);
     updateSyncIndicator('error');
-    toast('Sync failed — check connection', 'e');
+    toast('Sync error — check connection','e');
   } finally {
     pushPending = false;
   }
 }
 
-// ── Manual sync button ──
-function manualSync() {
-  if (!db) { toast('Not connected', 'e'); return; }
-  updateSyncIndicator('syncing');
-  // The real-time listener already keeps data fresh — just re-render
-  try { renderApprovals(); renderDash(); renderMySchedule(); renderSchedule(); } catch(e) {}
-  updateSyncIndicator('synced');
-  toast('↕ Up to date', 's');
+// ── Pull state from Firebase ──
+async function pullState(force) {
+  if (!syncEnabled) return;
+  try {
+    const raw = await fbGet('/scheduler/' + SYNC_KEY());
+    if (!raw || typeof raw !== 'object') {
+      console.log('[Sync] No data in Firebase yet');
+      return;
+    }
+
+    // Skip if we already have this version
+    if (!force && raw.lastUpdated && raw.lastUpdated <= lastSyncTs) return;
+
+    // Skip own very-recent push to avoid re-render loop
+    if (!force && activeReviewerId && activeReviewerId !== 'manager'
+        && raw.lastUpdatedBy === activeReviewerId
+        && (Date.now() - raw.lastUpdated) < 2000) {
+      console.log('[Sync] Skipping own recent push');
+      return;
+    }
+
+    // Convert keyed maps → arrays + sanitize each entry
+    const rawReqs = mapToArray(raw.requests);
+    const rawScheds = mapToArray(raw.schedule);
+
+    const cleanReqs = rawReqs.map(cleanRequest).filter(Boolean);
+    const cleanScheds = rawScheds.map(cleanScheduleEntry).filter(Boolean);
+
+    console.log('[Sync] Pulled', cleanReqs.length, 'requests,', cleanScheds.length, 'schedule entries, by', raw.lastUpdatedBy);
+
+    requests = cleanReqs;
+    schedule = cleanScheds;
+    lastSyncTs = raw.lastUpdated || Date.now();
+
+    // Re-render everything safely
+    try { renderDash(); } catch(e) { console.error('renderDash:', e); }
+    try { renderApprovals(); } catch(e) { console.error('renderApprovals:', e); }
+    try { renderMySchedule(); } catch(e) { console.error('renderMySchedule:', e); }
+    try { renderSchedule(); } catch(e) { console.error('renderSchedule:', e); }
+    try { renderTeam(); } catch(e) { console.error('renderTeam:', e); }
+    try { updatePendingBadge(); } catch(e) { console.error('updatePendingBadge:', e); }
+    try { onActiveReviewerChange(); } catch(e) { console.error('onActiveReviewerChange:', e); }
+
+    updateSyncIndicator('synced');
+    if ((Date.now() - (raw.lastUpdated || 0)) < 15000) {
+      showSyncPulse('↓ ' + (raw.lastUpdatedBy || 'team') + ' updated');
+    }
+  } catch(e) {
+    console.error('[Sync] Pull failed:', e.message);
+    updateSyncIndicator('error');
+  }
 }
 
-// ── Sync indicator ──
+// ── Auto-sync polling every 5s ──
+function startSync() {
+  if (syncInterval) clearInterval(syncInterval);
+  syncInterval = setInterval(() => pullState(false), 5000);
+  pullState(true);
+}
+
+// ── Manual sync button ──
+function manualSync() {
+  updateSyncIndicator('syncing');
+  pullState(true).then(() => toast('↕ Synced with team', 's'));
+}
+
+// ── Init Firebase connection ──
+function initFirebase() {
+  updateSyncIndicator('syncing');
+  fbGet('/scheduler/ping')
+    .then(() => {
+      syncEnabled = true;
+      updateSyncIndicator('connected');
+      startSync();
+    })
+    .catch(e => {
+      console.warn('[Firebase] Connection failed:', e.message);
+      syncEnabled = false;
+      updateSyncIndicator('error');
+      const el = document.getElementById('sync-indicator');
+      if (el) el.title = e.message;
+    });
+}
+
+// ── Sync indicator UI ──
 function updateSyncIndicator(state) {
   const el = document.getElementById('sync-indicator');
   if (!el) return;
@@ -2661,7 +2737,7 @@ function updateSyncIndicator(state) {
     connected: ['#34d870', 'Live'],
     synced:    ['#34d870', 'Synced'],
     syncing:   ['#f59e0b', 'Syncing…'],
-    error:     ['#f05454', 'Error'],
+    error:     ['#f05454', 'Sync error'],
     offline:   ['#627a94', 'Offline'],
   };
   const [dot, text] = map[state] || map.offline;
