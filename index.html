@@ -630,7 +630,9 @@ function getGreeting(){
 // ══════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════
+let currentPage = 'dashboard';
 function nav(el,page){
+  currentPage = page;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('on'));
   document.getElementById('page-'+page).classList.add('on');
@@ -1094,6 +1096,11 @@ function updatePrioSummary(){
   const id=document.getElementById('f-name').value;
   const rv=REVIEWERS.find(r=>r.id===id);
   const minRequired=rv?(rv.base===3?3:5):5;
+  // Debug: log if counter seems wrong
+  const sizes = DAYS.map((_,i) => selectedDays[i].size);
+  if (sizes.some(s => s > 0) && workingDays === 0) {
+    console.error('[BUG] Pills have selections but workingDays=0. sizes:', sizes, 'annualLeave:', DAYS.map((_,i) => annualLeave[i]));
+  }
   document.getElementById('f-sel').textContent=workingDays;
   document.getElementById('f-max').textContent=minRequired;
   document.getElementById('f-sel').style.color=workingDays>=minRequired?'var(--grn)':workingDays>0?'var(--org)':'var(--mut2)';
@@ -2711,7 +2718,11 @@ async function pullState(force) {
     try { renderSchedule(); } catch(e) { console.error('renderSchedule:', e); }
     try { renderTeam(); } catch(e) { console.error('renderTeam:', e); }
     try { updatePendingBadge(); } catch(e) { console.error('updatePendingBadge:', e); }
-    try { onActiveReviewerChange(); } catch(e) { console.error('onActiveReviewerChange:', e); }
+    // Skip onActiveReviewerChange if user is actively editing the request form
+    // — it calls onNameChange → updatePrioSummary which can interfere with form state
+    if (currentPage !== 'request') {
+      try { onActiveReviewerChange(); } catch(e) { console.error('onActiveReviewerChange:', e); }
+    }
 
     updateSyncIndicator('synced');
     if ((Date.now() - (raw.lastUpdated || 0)) < 15000) {
