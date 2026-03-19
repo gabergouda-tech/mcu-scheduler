@@ -1135,8 +1135,8 @@ function submitReq(){
 
   const existing=requests.findIndex(r=>r&&r.reviewer&&r.reviewer.id===rvId);
   const req={reviewer:rv,prefShift,notes,days,prefs,al,ot,status:'pending',submitted:new Date().toLocaleTimeString('en-GB'),isOT:workCount>rv.base};
-  if(existing>=0){requests[existing]=req;toast('Request updated — awaiting manager approval ✓','i');}
-  else{requests.push(req);toast('Submitted! Your request is awaiting manager approval ✓','s');}
+  if(existing>=0){requests[existing]=req;}
+  else{requests.push(req);}
 
   // Make sure activeReviewerId is set so pushState tags the push correctly
   activeReviewerId = rvId;
@@ -1144,7 +1144,13 @@ function submitReq(){
 
   updatePendingBadge();resetForm();renderDash();
   onActiveReviewerChange();
-  pushState();
+
+  // Await push so we know it reached Firebase before confirming
+  pushState().then(() => {
+    toast('Submitted & synced! Awaiting manager approval ✓','s');
+  }).catch(() => {
+    toast('Submitted locally — sync pending, will retry','w');
+  });
 }
 
 function resetForm(){
@@ -1163,8 +1169,8 @@ function resetForm(){
 // ══════════════════════════════════════════════════
 // APPROVALS
 // ══════════════════════════════════════════════════
-function approve(idx){if(!requests[idx])return;requests[idx].status='approved';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': approved ✓','s');onActiveReviewerChange();pushState();}
-function reject(idx){if(!requests[idx])return;requests[idx].status='rejected';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': rejected','i');onActiveReviewerChange();pushState();}
+function approve(idx){if(!requests[idx])return;requests[idx].status='approved';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': approved ✓','s');onActiveReviewerChange();pushState().catch(()=>toast('Sync error — approve saved locally','e'));}
+function reject(idx){if(!requests[idx])return;requests[idx].status='rejected';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': rejected','i');onActiveReviewerChange();pushState().catch(()=>toast('Sync error — reject saved locally','e'));}
 function approveAll(){
   const p=requests.filter(r=>r.status==='pending');
   if(!p.length){toast('No pending requests to approve.','i');return;}
@@ -2639,7 +2645,8 @@ async function pushState() {
   } catch(e) {
     console.error('[Sync] Push failed:', e.message);
     updateSyncIndicator('error');
-    toast('Sync error — check connection','e');
+    pushPending = false;
+    throw e; // propagate so callers can react
   } finally {
     pushPending = false;
   }
@@ -2672,6 +2679,24 @@ async function pullState(force) {
 
     const cleanReqs = rawReqs.map(cleanRequest).filter(Boolean);
     const cleanScheds = rawScheds.map(cleanScheduleEntry).filter(Boolean);
+
+    // ── MERGE: preserve local requests not yet in Firebase ──
+    // If this client has a request for a reviewer that Firebase doesn't,
+    // keep the local one (it was submitted but push may not have landed yet).
+    // Firebase version always wins for requests that exist on both sides.
+    const remoteIds = new Set(cleanReqs.map(r => r.reviewer.id));
+    const localOnly = (requests || []).filter(r => 
+      r && r.reviewer && r.reviewer.id && !remoteIds.has(r.reviewer.id)
+    );
+    if (localOnly.length) {
+      console.log('[Sync] Merging', localOnly.length, 'local-only request(s):', localOnly.map(r=>r.reviewer.id));
+      cleanReqs.push(...localOnly);
+      // Push merged state back so other clients get it too
+      setTimeout(() => {
+        requests = cleanReqs;
+        pushState();
+      }, 500);
+    }
 
     console.log('[Sync] Pulled', cleanReqs.length, 'requests,', cleanScheds.length, 'schedule entries, by', raw.lastUpdatedBy);
 
