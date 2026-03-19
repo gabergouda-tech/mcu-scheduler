@@ -2677,6 +2677,14 @@ async function pushState() {
   if (pushPending) return;
   pushPending = true;
   pushInFlight = true;
+
+  // CRITICAL: snapshot local state NOW before any async work.
+  // pullState polling can overwrite `requests` and `schedule` during our await.
+  const localRequests = JSON.parse(JSON.stringify(requests || []));
+  const localSchedule = JSON.parse(JSON.stringify(schedule || []));
+  const localIsManager = isManagerMode;
+  const localActiveId = activeReviewerId || 'manager';
+
   try {
     updateSyncIndicator('syncing');
 
@@ -2688,7 +2696,6 @@ async function pushState() {
     const remoteReqs = {};
     const remoteScheds = {};
     if (remote && typeof remote === 'object') {
-      // Preserve all existing remote requests (keyed by reviewer ID)
       const rr = remote.requests || {};
       Object.keys(rr).forEach(k => { if(rr[k]) remoteReqs[k] = rr[k]; });
       const rs = remote.schedule || {};
@@ -2696,42 +2703,39 @@ async function pushState() {
     }
 
     // 3. Overlay local requests on top of remote
-    //    Local requests for THIS reviewer or from manager actions always win
-    (requests || []).forEach(r => {
+    localRequests.forEach(r => {
       if (r && r.reviewer && r.reviewer.id) {
         const id = r.reviewer.id;
-        const localClean = deepClean(r);
         const remoteReq = remoteReqs[id];
         
         if (!remoteReq) {
           // New request not in Firebase yet → add it
-          remoteReqs[id] = localClean;
-        } else if (isManagerMode) {
+          remoteReqs[id] = r;
+        } else if (localIsManager) {
           // Manager actions always win (approve/reject/etc)
-          remoteReqs[id] = localClean;
-        } else if (id === activeReviewerId) {
+          remoteReqs[id] = r;
+        } else if (id === localActiveId) {
           // Reviewer updating their OWN request → local wins
           // BUT preserve status if remote has a manager-set status
           if (remoteReq.status === 'approved' || remoteReq.status === 'rejected') {
-            localClean.status = remoteReq.status; // don't revert manager decision
+            r.status = remoteReq.status;
           }
-          remoteReqs[id] = localClean;
+          remoteReqs[id] = r;
         }
         // For other reviewers' requests: keep remote version (don't overwrite)
       }
     });
 
-    // 4. Overlay local schedule on top of remote (manager-only typically)
-    (schedule || []).forEach(s => {
+    // 4. Overlay local schedule on top of remote
+    localSchedule.forEach(s => {
       if (s && s.reviewer && s.reviewer.id) {
-        remoteScheds[s.reviewer.id] = deepClean(s);
+        remoteScheds[s.reviewer.id] = s;
       }
     });
 
-    // 5. Remove deleted requests (if local has fewer than remote)
-    // Only manager can delete requests
-    if (isManagerMode) {
-      const localIds = new Set((requests || []).filter(r=>r&&r.reviewer).map(r=>r.reviewer.id));
+    // 5. Remove deleted requests (manager only)
+    if (localIsManager) {
+      const localIds = new Set(localRequests.filter(r=>r&&r.reviewer).map(r=>r.reviewer.id));
       Object.keys(remoteReqs).forEach(k => {
         if (!localIds.has(k)) delete remoteReqs[k];
       });
@@ -2742,14 +2746,14 @@ async function pushState() {
       schedule: remoteScheds,
       weekOffset: weekOffset || 0,
       lastUpdated: Date.now(),
-      lastUpdatedBy: activeReviewerId || 'manager',
+      lastUpdatedBy: localActiveId,
       v: 6
     };
 
     await fbSet('/scheduler/' + SYNC_KEY(), payload);
     lastSyncTs = payload.lastUpdated;
     updateSyncIndicator('synced');
-    console.log('[Sync] Pushed', Object.keys(payload.requests).length, 'requests by', payload.lastUpdatedBy);
+    console.log('[Sync] Pushed', Object.keys(payload.requests).length, 'requests by', payload.lastUpdatedBy, 'days sample:', JSON.stringify((Object.values(payload.requests)[0]||{}).days||'none'));
   } catch(e) {
     console.error('[Sync] Push failed:', e.message);
     updateSyncIndicator('error');
