@@ -1176,8 +1176,26 @@ function resetForm(){
 // ══════════════════════════════════════════════════
 // APPROVALS
 // ══════════════════════════════════════════════════
-function approve(idx){if(!requests[idx])return;requests[idx].status='approved';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': approved ✓','s');onActiveReviewerChange();pushState().catch(()=>toast('Sync error — approve saved locally','e'));}
-function reject(idx){if(!requests[idx])return;requests[idx].status='rejected';updatePendingBadge();renderApprovals();renderDash();toast(requests[idx].reviewer.name+': rejected','i');onActiveReviewerChange();pushState().catch(()=>toast('Sync error — reject saved locally','e'));}
+function approve(idx){
+  const r = requests[idx];
+  if(!r){console.error('[Approve] No request at index', idx);return;}
+  console.log('[Approve] Approving', r.reviewer.name, 'idx='+idx, 'old status='+r.status);
+  r.status='approved';
+  updatePendingBadge();renderApprovals();renderDash();
+  toast(r.reviewer.name+': approved ✓','s');
+  onActiveReviewerChange();
+  pushState().then(()=>console.log('[Approve] Push succeeded')).catch(e=>{console.error('[Approve] Push failed',e);toast('Sync error — approve saved locally','e');});
+}
+function reject(idx){
+  const r = requests[idx];
+  if(!r){console.error('[Reject] No request at index', idx);return;}
+  console.log('[Reject] Rejecting', r.reviewer.name, 'idx='+idx);
+  r.status='rejected';
+  updatePendingBadge();renderApprovals();renderDash();
+  toast(r.reviewer.name+': rejected','i');
+  onActiveReviewerChange();
+  pushState().then(()=>console.log('[Reject] Push succeeded')).catch(e=>{console.error('[Reject] Push failed',e);toast('Sync error — reject saved locally','e');});
+}
 function approveAll(){
   const p=requests.filter(r=>r.status==='pending');
   if(!p.length){toast('No pending requests to approve.','i');return;}
@@ -1195,6 +1213,7 @@ function updatePendingBadge(){
 
 function renderApprovals(){
   const body=document.getElementById('ap-body');
+  console.log('[Approvals] Rendering', requests.length, 'requests. Statuses:', requests.map(r=>(r.reviewer?r.reviewer.name:'?')+':'+r.status));
   if(!requests.length){body.innerHTML='<div class="empty"><div class="empty-i">📋</div><div class="empty-t">No requests yet</div><div class="empty-s">Reviewers submit from the Request Shift page.</div></div>';return;}
   const groups=[{l:'⏳ Pending',s:'pending'},{l:'✅ Approved',s:'approved'},{l:'❌ Rejected',s:'rejected'}];
   let html='';
@@ -1203,19 +1222,29 @@ function renderApprovals(){
     html+='<div style="margin-bottom:14px"><div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:7px;">'+g.l+' ('+list.length+')</div>';
     list.forEach(r=>{
       const ri=requests.indexOf(r);
-      const rv=r.reviewer;
-      const sc=TIER_COLS[rv.tier];
-      const dc=DAYS.filter((_,i)=>r.days[i]).length;
-      const db=DAYS.map((d,i)=>{const _days=r.days||{};const _prefs=r.prefs||{};if(!_days[i])return'';const s=_days[i];const p=_prefs[i];
-        // Show custom timing if exists
-        const ct = r.customTimings && r.customTimings[i];
-        const timeNote = ct ? ' '+formatHour(ct.startHour) : '';
-        return'<span class="bdg b'+s+'" style="margin-right:3px;margin-bottom:3px">'+d+' '+(SHIFTS[s]?SHIFTS[s].emoji:'')+ ' '+(SHIFTS[s]?SHIFTS[s].name:s)+(p?' #'+p:'')+timeNote+'</span>';}).join('');
+      const rv=r.reviewer||{};
+      const sc=TIER_COLS[rv.tier]||'#627a94';
+      const _days=r.days||{};
+      const _prefs=r.prefs||{};
+      const _al=r.al||{};
+      // Count working days (any day index that has a truthy shift value)
+      const dc=DAYS.filter((_,i)=>_days[i]&&_days[i]!=='AL'&&_days[i]!==null).length;
+      // Build day badges
+      const db=DAYS.map((d,i)=>{
+        if(_al[i]) return'<span class="bdg bN" style="margin-right:3px;margin-bottom:3px">'+d+' 🏖 Annual Leave</span>';
+        const s=_days[i];
+        if(!s || s==='OFF') return'';
+        const sh=SHIFTS[s];
+        const p=_prefs[i];
+        const pLabel = Array.isArray(p) ? ' ('+p.length+' options)' : '';
+        return'<span class="bdg b'+(sh?s:'M')+'" style="margin-right:3px;margin-bottom:3px">'+d+' '+(sh?sh.emoji:'')+ ' '+(sh?sh.name:s)+pLabel+'</span>';
+      }).join('');
       const otFlag=r.isOT?'<span class="bdg bOT" style="margin-left:6px">OT request</span>':'';
+      const prefSh=SHIFTS[r.prefShift];
       html+='<div class="apc"><div class="aph">'
-        +'<div style="width:30px;height:30px;border-radius:50%;background:'+sc+'22;color:'+sc+';border:1.5px solid '+sc+'55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">'+rv.name.charAt(0)+'</div>'
-        +'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+rv.name+'</div>'
-        +'<div style="font-size:9.5px;color:var(--mut2);font-family:JetBrains Mono,monospace">'+rv.id+' · Tier '+rv.tier+' ('+TIER_LABELS[rv.tier]+') · '+dc+' shifts · pref: <span style="color:'+(SHIFTS[r.prefShift]?SHIFTS[r.prefShift].col:'#fff')+'">'+(SHIFTS[r.prefShift]?SHIFTS[r.prefShift].emoji:'')+' '+(SHIFTS[r.prefShift]?SHIFTS[r.prefShift].name:r.prefShift)+'</span></div></div>'
+        +'<div style="width:30px;height:30px;border-radius:50%;background:'+sc+'22;color:'+sc+';border:1.5px solid '+sc+'55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">'+(rv.name||'?').charAt(0)+'</div>'
+        +'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+(rv.name||'Unknown')+'</div>'
+        +'<div style="font-size:9.5px;color:var(--mut2);font-family:JetBrains Mono,monospace">'+(rv.id||'?')+' · Tier '+(rv.tier||'?')+' ('+(TIER_LABELS[rv.tier]||'?')+') · '+dc+' shifts'+(prefSh?' · pref: <span style="color:'+prefSh.col+'">'+prefSh.emoji+' '+prefSh.name+'</span>':'')+'</div></div>'
         +'<span class="bdg b'+r.status.substring(0,4)+'">'+r.status.toUpperCase()+'</span>'
         +otFlag
         +'<div class="flex g6 ic" style="margin-left:10px">'
@@ -2638,10 +2667,12 @@ function buildPayload() {
 }
 
 // ── Push state to Firebase ──
+let pushInFlight = false;
 async function pushState() {
   if (!syncEnabled) return;
   if (pushPending) return;
   pushPending = true;
+  pushInFlight = true;
   try {
     updateSyncIndicator('syncing');
     const payload = buildPayload();
@@ -2653,15 +2684,20 @@ async function pushState() {
     console.error('[Sync] Push failed:', e.message);
     updateSyncIndicator('error');
     pushPending = false;
+    pushInFlight = false;
     throw e; // propagate so callers can react
   } finally {
     pushPending = false;
+    // Keep pushInFlight true for 2s after push completes to prevent
+    // the next poll from reverting our change with stale data
+    setTimeout(() => { pushInFlight = false; }, 2000);
   }
 }
 
 // ── Pull state from Firebase ──
 async function pullState(force) {
   if (!syncEnabled) return;
+  if (pushInFlight) { console.log('[Sync] Skipping pull — push in flight'); return; }
   try {
     const raw = await fbGet('/scheduler/' + SYNC_KEY());
     if (!raw || typeof raw !== 'object') {
