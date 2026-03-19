@@ -1229,6 +1229,7 @@ function renderApprovals(){
       const _al=r.al||{};
       // Count working days (any day index that has a truthy shift value)
       const dc=DAYS.filter((_,i)=>_days[i]&&_days[i]!=='AL'&&_days[i]!==null).length;
+      if(dc===0) console.warn('[Approvals] 0 shifts for', rv.name, 'days:', JSON.stringify(_days), 'raw r.days:', JSON.stringify(r.days));
       // Build day badges
       const db=DAYS.map((d,i)=>{
         if(_al[i]) return'<span class="bdg bN" style="margin-right:3px;margin-bottom:3px">'+d+' 🏖 Annual Leave</span>';
@@ -2667,6 +2668,9 @@ function buildPayload() {
 }
 
 // ── Push state to Firebase ──
+// Uses READ-MODIFY-WRITE pattern: reads current Firebase state,
+// merges local changes on top, then writes back. This prevents
+// one client from reverting another client's status changes.
 let pushInFlight = false;
 async function pushState() {
   if (!syncEnabled) return;
@@ -2675,7 +2679,73 @@ async function pushState() {
   pushInFlight = true;
   try {
     updateSyncIndicator('syncing');
-    const payload = buildPayload();
+
+    // 1. Read current Firebase state
+    let remote = null;
+    try { remote = await fbGet('/scheduler/' + SYNC_KEY()); } catch(e) { /* first write, no remote */ }
+
+    // 2. Build merged payload: start with remote, overlay local changes
+    const remoteReqs = {};
+    const remoteScheds = {};
+    if (remote && typeof remote === 'object') {
+      // Preserve all existing remote requests (keyed by reviewer ID)
+      const rr = remote.requests || {};
+      Object.keys(rr).forEach(k => { if(rr[k]) remoteReqs[k] = rr[k]; });
+      const rs = remote.schedule || {};
+      Object.keys(rs).forEach(k => { if(rs[k]) remoteScheds[k] = rs[k]; });
+    }
+
+    // 3. Overlay local requests on top of remote
+    //    Local requests for THIS reviewer or from manager actions always win
+    (requests || []).forEach(r => {
+      if (r && r.reviewer && r.reviewer.id) {
+        const id = r.reviewer.id;
+        const localClean = deepClean(r);
+        const remoteReq = remoteReqs[id];
+        
+        if (!remoteReq) {
+          // New request not in Firebase yet → add it
+          remoteReqs[id] = localClean;
+        } else if (isManagerMode) {
+          // Manager actions always win (approve/reject/etc)
+          remoteReqs[id] = localClean;
+        } else if (id === activeReviewerId) {
+          // Reviewer updating their OWN request → local wins
+          // BUT preserve status if remote has a manager-set status
+          if (remoteReq.status === 'approved' || remoteReq.status === 'rejected') {
+            localClean.status = remoteReq.status; // don't revert manager decision
+          }
+          remoteReqs[id] = localClean;
+        }
+        // For other reviewers' requests: keep remote version (don't overwrite)
+      }
+    });
+
+    // 4. Overlay local schedule on top of remote (manager-only typically)
+    (schedule || []).forEach(s => {
+      if (s && s.reviewer && s.reviewer.id) {
+        remoteScheds[s.reviewer.id] = deepClean(s);
+      }
+    });
+
+    // 5. Remove deleted requests (if local has fewer than remote)
+    // Only manager can delete requests
+    if (isManagerMode) {
+      const localIds = new Set((requests || []).filter(r=>r&&r.reviewer).map(r=>r.reviewer.id));
+      Object.keys(remoteReqs).forEach(k => {
+        if (!localIds.has(k)) delete remoteReqs[k];
+      });
+    }
+
+    const payload = {
+      requests: remoteReqs,
+      schedule: remoteScheds,
+      weekOffset: weekOffset || 0,
+      lastUpdated: Date.now(),
+      lastUpdatedBy: activeReviewerId || 'manager',
+      v: 6
+    };
+
     await fbSet('/scheduler/' + SYNC_KEY(), payload);
     lastSyncTs = payload.lastUpdated;
     updateSyncIndicator('synced');
@@ -2685,11 +2755,9 @@ async function pushState() {
     updateSyncIndicator('error');
     pushPending = false;
     pushInFlight = false;
-    throw e; // propagate so callers can react
+    throw e;
   } finally {
     pushPending = false;
-    // Keep pushInFlight true for 2s after push completes to prevent
-    // the next poll from reverting our change with stale data
     setTimeout(() => { pushInFlight = false; }, 2000);
   }
 }
@@ -2724,21 +2792,17 @@ async function pullState(force) {
     const cleanScheds = rawScheds.map(cleanScheduleEntry).filter(Boolean);
 
     // ── MERGE: preserve local requests not yet in Firebase ──
-    // If this client has a request for a reviewer that Firebase doesn't,
-    // keep the local one (it was submitted but push may not have landed yet).
-    // Firebase version always wins for requests that exist on both sides.
+    // If this client has a local request that Firebase doesn't have yet,
+    // keep it locally and push it on next pushState (which does read-modify-write).
     const remoteIds = new Set(cleanReqs.map(r => r.reviewer.id));
     const localOnly = (requests || []).filter(r => 
       r && r.reviewer && r.reviewer.id && !remoteIds.has(r.reviewer.id)
     );
     if (localOnly.length) {
-      console.log('[Sync] Merging', localOnly.length, 'local-only request(s):', localOnly.map(r=>r.reviewer.id));
+      console.log('[Sync] Keeping', localOnly.length, 'local-only request(s):', localOnly.map(r=>r.reviewer.id));
       cleanReqs.push(...localOnly);
-      // Push merged state back so other clients get it too
-      setTimeout(() => {
-        requests = cleanReqs;
-        pushState();
-      }, 500);
+      // Push so other clients see it (read-modify-write is safe)
+      setTimeout(() => pushState().catch(e => console.warn('[Sync] Merge push failed:', e)), 1000);
     }
 
     console.log('[Sync] Pulled', cleanReqs.length, 'requests,', cleanScheds.length, 'schedule entries, by', raw.lastUpdatedBy);
