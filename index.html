@@ -2565,11 +2565,23 @@ function mapToArray(v) {
 }
 
 // ── Safely read an object's sub-fields (Firebase may drop empty objects) ──
+// CRITICAL: Firebase converts {"0":"M","1":"A","2":"X"} → ["M","A","X"]
+// when all keys are sequential integers starting from 0.
+// This function handles both cases and always returns a plain object with string keys.
 function safeObj(v) {
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
-  const out = {};
-  Object.keys(v).forEach(k => { if (v[k] !== null && v[k] !== undefined) out[k] = v[k]; });
-  return out;
+  if (!v) return {};
+  if (Array.isArray(v)) {
+    // Convert array back to {index: value} object, skipping nulls
+    const out = {};
+    v.forEach((val, i) => { if (val !== null && val !== undefined) out[i] = val; });
+    return out;
+  }
+  if (typeof v === 'object') {
+    const out = {};
+    Object.keys(v).forEach(k => { if (v[k] !== null && v[k] !== undefined) out[k] = v[k]; });
+    return out;
+  }
+  return {};
 }
 
 // ── Restore a value that should be an array (Firebase: ["M","A"] → {"0":"M","1":"A"}) ──
