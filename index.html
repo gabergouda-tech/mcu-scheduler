@@ -1165,11 +1165,11 @@ function resetForm(){
   const fshift=document.getElementById('f-shift'); if(fshift) fshift.value='';
   document.getElementById('f-notes').value='';
   document.getElementById('f-info').style.display='none';
-  document.getElementById('flex-section').style.display='none';
+  const flexSec=document.getElementById('flex-section'); if(flexSec) flexSec.style.display='none';
   DAYS.forEach((_,i)=>{selectedDays[i].clear();annualLeave[i]=false;overtimeAvail[i]=false;buildDayPills(i);});
   document.getElementById('f-sel').textContent='0';
   document.getElementById('f-warn').style.display='none';
-  document.getElementById('f-ot-note').style.display='none';
+  const otNote=document.getElementById('f-ot-note'); if(otNote) otNote.style.display='none';
   document.getElementById('f-max').textContent='5';
 }
 
