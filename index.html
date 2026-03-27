@@ -437,7 +437,7 @@ tr:last-child td{border-bottom:none;} tr:hover td{background:rgba(255,255,255,.0
     <div class="tbar">
       <div><div class="pt">Manager Approvals</div><div class="ps" id="ap-sub">Pending requests</div></div>
       <div class="flex g8 ic">
-        <button class="btn b-app" onclick="approveAll()">✓ Approve All Pending</button>
+        <button class="btn b-app" id="approve-all-btn" onclick="approveAll()">✓ Approve All Pending</button>
         <button class="btn b-auto" onclick="autoGen()">⚡ Generate Schedule</button>
       </div>
     </div>
@@ -570,6 +570,7 @@ function toggleManagerMode(){
   const code = prompt('Enter manager PIN:');
   if(code === (window._managerPin||'1234')){
     isManagerMode = !isManagerMode;
+    if(isManagerMode) activeReviewerId='manager';
     document.getElementById('app').classList.toggle('manager-mode', isManagerMode);
     document.getElementById('sidebar').classList.toggle('manager-mode', isManagerMode);
     document.querySelectorAll('.manager-only').forEach(el => {
@@ -1207,6 +1208,7 @@ function approve(idx){
   if(!r){console.error('[Approve] No request at index', idx);return;}
   console.log('[Approve] Approving', r.reviewer.name, 'idx='+idx, 'old status='+r.status);
   r.status='approved';
+  if(!activeReviewerId) activeReviewerId='manager';
   updatePendingBadge();renderApprovals();renderDash();
   toast(r.reviewer.name+': approved ✓','s');
   onActiveReviewerChange();
@@ -1217,24 +1219,29 @@ function reject(idx){
   if(!r){console.error('[Reject] No request at index', idx);return;}
   console.log('[Reject] Rejecting', r.reviewer.name, 'idx='+idx);
   r.status='rejected';
+  if(!activeReviewerId) activeReviewerId='manager';
   updatePendingBadge();renderApprovals();renderDash();
   toast(r.reviewer.name+': rejected','i');
   onActiveReviewerChange();
   pushState().then(()=>console.log('[Reject] Push succeeded')).catch(e=>{console.error('[Reject] Push failed',e);toast('Sync error — reject saved locally','e');});
 }
 function approveAll(){
-  const p=requests.filter(r=>r.status==='pending');
+  const p=requests.filter(r=>r&&r.reviewer&&r.status==='pending');
   if(!p.length){toast('No pending requests to approve.','i');return;}
-  requests.forEach(r=>{if(r&&r.status==='pending')r.status='approved';});
+  requests.forEach(r=>{if(r&&r.reviewer&&r.status==='pending')r.status='approved';});
+  if(!activeReviewerId) activeReviewerId='manager';
   toast(p.length+' request(s) approved ✓','s');
   updatePendingBadge();renderApprovals();renderDash();onActiveReviewerChange();pushState();
 }
 function delReq(idx){if(!requests[idx]||!requests[idx].reviewer){requests.splice(idx,1);renderApprovals();return;}const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
 
 function updatePendingBadge(){
-  const n=requests.filter(r=>r&&r.status==='pending').length;
+  const n=requests.filter(r=>r&&r.reviewer&&r.status==='pending').length;
   const nb=document.getElementById('nb');nb.textContent=n;nb.style.display=n?'inline':'none';
   document.getElementById('ap-sub').textContent=n+' pending · week of '+fmtWk(weekOffset);
+  // Show/hide Approve All button based on pending count
+  const aab=document.getElementById('approve-all-btn');
+  if(aab) aab.style.display=n>0?'':'none';
 }
 
 function renderApprovals(){
@@ -1244,7 +1251,7 @@ function renderApprovals(){
   const groups=[{l:'⏳ Pending',s:'pending'},{l:'✅ Approved',s:'approved'},{l:'❌ Rejected',s:'rejected'}];
   let html='';
   groups.forEach(g=>{
-    const list=requests.filter(r=>r.status===g.s);if(!list.length)return;
+    const list=requests.filter(r=>r&&r.reviewer&&r.status===g.s);if(!list.length)return;
     html+='<div style="margin-bottom:14px"><div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:7px;">'+g.l+' ('+list.length+')</div>';
     list.forEach(r=>{
       const ri=requests.indexOf(r);
@@ -1495,7 +1502,7 @@ function autoGen(){
   });
 
   // ── Build schedule output ──
-  schedule=approved.map(r=>{
+  const _newSched=approved.map(r=>{
     const id=r.reviewer.id;
     let base=0,total=0;
     const sched={};
@@ -1507,6 +1514,7 @@ function autoGen(){
     });
     return{reviewer:r.reviewer,sched,totalAssigned:total,baseAssigned:base,request:r};
   }).filter(r=>r.totalAssigned>0);
+  schedule.splice(0,schedule.length,..._newSched);
 
   // ── Reviewer welfare check (uses effectiveBase — AL days reduce target) ──
   const underStaffed=approved.filter(r=>dayCount[r.reviewer.id]<effectiveBase(r));
@@ -2838,7 +2846,7 @@ async function pushState() {
         if (!remoteReq) {
           // New request not in Firebase yet → add it
           remoteReqs[id] = r;
-        } else if (localIsManager) {
+        } else if (localIsManager || localActiveId === 'manager') {
           // Manager actions always win (approve/reject/etc)
           remoteReqs[id] = r;
         } else if (id === localActiveId) {
