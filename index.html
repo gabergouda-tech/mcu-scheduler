@@ -450,6 +450,7 @@ tr:last-child td{border-bottom:none;} tr:hover td{background:rgba(255,255,255,.0
       <div><div class="pt">Weekly Schedule</div><div class="ps" id="sc-sub">Egypt Time (UTC+2) · Fixed shift times</div></div>
       <div class="flex g8 ic">
         <button class="btn b-sec" onclick="exportCSV()">↓ Export CSV</button>
+        <button class="btn b-sec" onclick="exportScheduleHTML()" style="background:#1a3a1a;color:#52d986;border-color:#2a6a2a;">📊 Export Schedule</button>
         <button class="btn b-auto" onclick="autoGen()">⚡ Regenerate</button>
       </div>
     </div>
@@ -509,6 +510,8 @@ tr:last-child td{border-bottom:none;} tr:hover td{background:rgba(255,255,255,.0
 // ══════════════════════════════════════════════════
 const DAYS=['Sat','Sun','Mon','Tue','Wed','Thu','Fri'];
 let DAY_LOADS=[117,129,186,194,193,167,148]; // avg daily tickets from Feb 2026 data
+const TICKETS_PER_HOUR = 3;      // assumed reviewer throughput: 3 tickets/hr
+const MIN_TICKETS_PER_SHIFT = 24; // minimum productive tickets per 8h shift
 
 const SHIFTS={
   M:  {name:'Early Morning', time:'06:00–14:00', start:6,  end:14, col:'#52d986', emoji:'🌅'},
@@ -543,7 +546,6 @@ let REVIEWERS=[
 
 let TIER_COLS={1:'#60c6f8',2:'#52d986',3:'#ff8c42',4:'#f5c842',5:'#a78bfa'};
 let TIER_LABELS={1:'Senior Lead',2:'Senior',3:'Mid-level',4:'Junior',5:'Associate'};
-let AVATAR_COLORS=['#1e4d8c','#1a5c38','#5c2e1a','#4a3c0e','#2e1a5c','#1a4a4a','#5c1a3e','#3c4a1a','#1a2e5c','#5c3c1a'];
 
 // ══════════════════════════════════════════════════
 // STATE
@@ -584,6 +586,7 @@ function toggleManagerMode(){
       toast('Returned to reviewer view','i');
     }
     renderDash();
+    renderSchedule();
   } else if(code !== null){
     toast('Incorrect PIN','e');
   }
@@ -607,14 +610,24 @@ function buildShiftRef(){
 // ══════════════════════════════════════════════════
 // WEEK
 // ══════════════════════════════════════════════════
-function wkStart(o){const d=new Date();const dy=d.getDay();const diff=d.getDate()-(dy===0?6:dy-6)+o*7;const s=new Date(d);s.setDate(diff);s.setHours(0,0,0,0);return s;}
+function wkStart(o){const d=new Date();const dy=d.getDay();const sub=(dy+1)%7;const diff=d.getDate()-sub+o*7;const s=new Date(d);s.setDate(diff);s.setHours(0,0,0,0);return s;}
 function fmtWk(o){const s=wkStart(o);const e=new Date(s);e.setDate(e.getDate()+6);const f=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});return f(s)+' – '+f(e);}
-function changeWeek(d){weekOffset+=d;updateWeek();}
+function changeWeek(d){
+  weekOffset+=d;
+  // Clear current week data — new week starts fresh from Firebase
+  requests=[];schedule=[];
+  updateWeek();
+  updatePendingBadge();
+  renderDash();
+  renderApprovals();
+  renderSchedule();
+  if(syncEnabled) pullState(true);
+}
 function updateWeek(){
   document.getElementById('weekLabel').textContent=fmtWk(weekOffset);
   document.getElementById('db-sub').textContent='Week of '+fmtWk(weekOffset);
   document.getElementById('sc-sub').textContent='Week of '+fmtWk(weekOffset)+' · Egypt Time (UTC+2)';
-  document.getElementById('ap-sub').textContent=requests.filter(r=>r.status==='pending').length+' pending · week of '+fmtWk(weekOffset);
+  document.getElementById('ap-sub').textContent=requests.filter(r=>r&&r.status==='pending').length+' pending · week of '+fmtWk(weekOffset);
 }
 
 // ══════════════════════════════════════════════════
@@ -651,11 +664,16 @@ function nav(el,page){
 // ══════════════════════════════════════════════════
 function buildActiveReviewerDropdown(){
   const sel = document.getElementById('active-reviewer');
+  const prevVal = sel.value;
+  // Clear existing options except the placeholder first option
+  while(sel.options.length > 1) sel.remove(1);
   REVIEWERS.forEach(r=>{
     const o = document.createElement('option');
     o.value = r.id; o.textContent = r.name;
     sel.appendChild(o);
   });
+  // Restore previously selected value if still valid
+  if(prevVal && [...sel.options].some(o=>o.value===prevVal)) sel.value = prevVal;
   // Also build the request form dropdown
   buildReviewerDropdown();
 }
@@ -691,7 +709,7 @@ function onActiveReviewerChange(){
 
 function renderMyKpis(rv){
   const myReq = requests.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
-  const mySchEntry = schedule.find(r=>r.reviewer.id===rv.id);
+  const mySchEntry = schedule.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
   const shiftsReq = myReq ? DAYS.filter((_,i)=>myReq.days[i]).length : 0;
   const shiftsAsgn = mySchEntry ? mySchEntry.totalAssigned : 0;
   const status = myReq ? myReq.status : 'none';
@@ -719,7 +737,7 @@ function renderMySchedule(){
   if(!rv){return;}
   sub.textContent = rv.name+' · '+fmtWk(weekOffset);
   const myReq = requests.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
-  const mySchEntry = schedule.find(r=>r.reviewer.id===rv.id);
+  const mySchEntry = schedule.find(r=>r&&r.reviewer&&r.reviewer.id===rv.id);
 
   if(!myReq){
     body.innerHTML=`<div class="al al-i" style="margin-bottom:14px">You haven't submitted a shift request for this week yet. <a href="#" onclick="nav(document.querySelector('[data-p=request]'),'request');return false;" style="color:var(--accent)">Submit a request →</a></div>`;
@@ -741,23 +759,36 @@ function renderMySchedule(){
     const dateStr = date.toLocaleDateString('en-GB',{day:'2-digit',month:'short'});
 
     let shiftContent = '';
-    if(mySchEntry && mySchEntry.sched[di] !== 'OFF'){
-      const a = mySchEntry.sched[di];
+    const schedEntry = mySchEntry ? mySchEntry.sched[di] : null;
+    if(schedEntry === 'AL'){
+      shiftContent = '<div class="msd-off" style="color:var(--N)">🏖 Annual Leave</div>';
+    } else if(schedEntry && schedEntry !== 'OFF' && typeof schedEntry === 'object' && schedEntry.shift){
+      const a = schedEntry;
       const sh = SHIFTS[a.shift];
-      const timing = getEffectiveTiming(rv.id, di, a.shift);
-      const timingStr = formatHour(timing.start)+'–'+formatHour(timing.end);
-      const otTag = a.overtime ? '<span class="bdg bOT" style="margin-left:6px">Overtime</span>' : '';
-      shiftContent = `<div class="msd-shift">
-        <div class="msd-shift-name" style="color:${sh.col}">${sh.emoji} ${sh.name} ${otTag}</div>
-        <div class="msd-shift-time">${timingStr} Egypt Time</div>
-        ${timing.isCustom?'<div style="font-size:9.5px;color:var(--accent);font-family:JetBrains Mono,monospace;margin-top:2px">⏱ Adjusted timing</div>':''}
-      </div>`;
-    } else if(myReq && myReq.days[di]){
+      if(sh){
+        const timing = getEffectiveTiming(rv.id, di, a.shift);
+        const timingStr = formatHour(timing.start)+'–'+formatHour(timing.end);
+        const otTag = a.overtime ? '<span class="bdg bOT" style="margin-left:6px">Overtime</span>' : '';
+        shiftContent = `<div class="msd-shift">
+          <div class="msd-shift-name" style="color:${sh.col}">${sh.emoji} ${sh.name} ${otTag}</div>
+          <div class="msd-shift-time">${timingStr} Egypt Time</div>
+          ${timing.isCustom?'<div style="font-size:9.5px;color:var(--accent);font-family:JetBrains Mono,monospace;margin-top:2px">⏱ Adjusted timing</div>':''}
+        </div>`;
+      } else {
+        shiftContent = '<div class="msd-off">Assigned (unknown shift)</div>';
+      }
+    } else if(myReq && myReq.days && myReq.days[di] && myReq.days[di] !== 'AL'){
       const sh = SHIFTS[myReq.days[di]];
-      shiftContent = `<div class="msd-shift">
-        <div class="msd-shift-name" style="color:${sh.col};opacity:.6">${sh.emoji} ${sh.name} <span style="font-size:10px;color:var(--mut2)">(requested)</span></div>
-        <div class="msd-shift-time">${sh.time} Egypt Time</div>
-      </div>`;
+      if(sh){
+        shiftContent = `<div class="msd-shift">
+          <div class="msd-shift-name" style="color:${sh.col};opacity:.6">${sh.emoji} ${sh.name} <span style="font-size:10px;color:var(--mut2)">(requested)</span></div>
+          <div class="msd-shift-time">${sh.time} Egypt Time</div>
+        </div>`;
+      } else {
+        shiftContent = '<div class="msd-off">Day off</div>';
+      }
+    } else if(myReq && myReq.al && myReq.al[di]){
+      shiftContent = '<div class="msd-off" style="color:var(--N)">🏖 Annual Leave</div>';
     } else {
       shiftContent = '<div class="msd-off">Day off</div>';
     }
@@ -824,12 +855,9 @@ function onTimingChange(dayIdx, shiftKey){
 // POPULATE REVIEWER DROPDOWN (request form)
 // ══════════════════════════════════════════════════
 function buildReviewerDropdown(){
-  const sel=document.getElementById('f-name');
-  REVIEWERS.forEach(r=>{
-    const o=document.createElement('option');
-    o.value=r.id; o.textContent=r.name+' ('+r.base+' shifts/week)';
-    sel.appendChild(o);
-  });
+  // f-name is a hidden input used as a value store (set via .value from active-reviewer select).
+  // No dropdown needed — reviewer selection happens via the Home page selector.
+  // This function is intentionally a no-op kept for compatibility.
 }
 
 function onNameChange(){
@@ -1086,9 +1114,6 @@ function bulkClear(){
   updatePrioSummary();
 }
 
-function onDayShiftChange(i){
-  updatePrioSummary();
-}
 
 function updatePrioSummary(){
   const workingDays=DAYS.filter((_,i)=>selectedDays[i].size>0&&!annualLeave[i]).length;
@@ -1117,6 +1142,7 @@ function submitReq(){
   const notes=document.getElementById('f-notes').value.trim();
   if(!rvId){toast('Please select your name on the Home page first.','e');return;}
   const rv=REVIEWERS.find(r=>r.id===rvId);
+  if(!rv){toast('Reviewer not found. Please reselect your name.','e');return;}
   const minRequired=rv.base===3?3:5;
   const maxOffAllowed=rv.base===3?4:2;
 
@@ -1199,11 +1225,11 @@ function reject(idx){
 function approveAll(){
   const p=requests.filter(r=>r.status==='pending');
   if(!p.length){toast('No pending requests to approve.','i');return;}
-  requests.forEach(r=>{if(r.status==='pending')r.status='approved';});
+  requests.forEach(r=>{if(r&&r.status==='pending')r.status='approved';});
   toast(p.length+' request(s) approved ✓','s');
   updatePendingBadge();renderApprovals();renderDash();onActiveReviewerChange();pushState();
 }
-function delReq(idx){const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
+function delReq(idx){if(!requests[idx]||!requests[idx].reviewer){requests.splice(idx,1);renderApprovals();return;}const n=requests[idx].reviewer.name;requests.splice(idx,1);updatePendingBadge();renderApprovals();renderDash();toast('Removed request for '+n,'i');pushState();}
 
 function updatePendingBadge(){
   const n=requests.filter(r=>r&&r.status==='pending').length;
@@ -1246,7 +1272,7 @@ function renderApprovals(){
         +'<div style="width:30px;height:30px;border-radius:50%;background:'+sc+'22;color:'+sc+';border:1.5px solid '+sc+'55;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">'+(rv.name||'?').charAt(0)+'</div>'
         +'<div style="flex:1"><div style="font-weight:700;font-size:13px">'+(rv.name||'Unknown')+'</div>'
         +'<div style="font-size:9.5px;color:var(--mut2);font-family:JetBrains Mono,monospace">'+(rv.id||'?')+' · Tier '+(rv.tier||'?')+' ('+(TIER_LABELS[rv.tier]||'?')+') · '+dc+' shifts'+(prefSh?' · pref: <span style="color:'+prefSh.col+'">'+prefSh.emoji+' '+prefSh.name+'</span>':'')+'</div></div>'
-        +'<span class="bdg b'+r.status.substring(0,4)+'">'+r.status.toUpperCase()+'</span>'
+        +'<span class="bdg b'+(r.status||'pend').substring(0,4)+'">'+(r.status||'PENDING').toUpperCase()+'</span>'
         +otFlag
         +'<div class="flex g6 ic" style="margin-left:10px">'
         +(r.status!=='approved'?'<button class="btn b-app" onclick="approve('+ri+')">✓ Approve</button>':'')
@@ -1310,30 +1336,6 @@ function autoGen(){
     return [];
   }
 
-  // Returns the best shift to assign on day di for this reviewer:
-  // first tries their available shifts, then tries adjacent substitutes
-  // Returns null if nothing works on this day
-  function bestShiftForReviewer(req, di){
-    if(req.al && req.al[di]) return null;
-    const id=req.reviewer.id;
-    if(assigned[id][di]!=='OFF') return null;
-    const avail=getAvail(req, di);
-    if(!avail.length) return null;
-
-    // Try each preferred shift first
-    for(const sh of avail){
-      if(REQ[sh] && REQ[sh][di]>0 && filledCount(di,sh)<REQ[sh][di]) return sh;
-    }
-    // Preferred slots all full → try adjacent substitutes for each preferred shift
-    for(const sh of avail){
-      const alts=ADJACENT[sh]||[];
-      for(const alt of alts){
-        if(REQ[alt] && REQ[alt][di]>0 && filledCount(di,alt)<REQ[alt][di]) return alt;
-      }
-    }
-    return null; // no slot available on this day at all
-  }
-
   function filledCount(di, sh){
     return approved.filter(r=>assigned[r.reviewer.id][di]!=='OFF'&&assigned[r.reviewer.id][di].shift===sh).length;
   }
@@ -1357,7 +1359,6 @@ function autoGen(){
 
   const dayOrder=[2,3,4,5,6,0,1]; // Mon→Fri→Sat→Sun
   const seniorFirst=[...approved].sort((a,b)=>a.reviewer.tier-b.reviewer.tier);
-  const juniorFirst=[...approved].sort((a,b)=>b.reviewer.tier-a.reviewer.tier);
   const pendingDoubles=[];
 
   // ══════════════════════════════════════════════
@@ -1443,13 +1444,13 @@ function autoGen(){
   // Only now that everyone has their base shifts
   // ══════════════════════════════════════════════
 
-  // PASS B1: OT — junior first, exact preferred shift or adjacent substitute
+  // PASS B1: OT — senior first, exact preferred shift or adjacent substitute
   dayOrder.forEach(di=>{
     const shiftKeys=Object.keys(REQ);
     shiftKeys.forEach(sh=>{
       if(!REQ[sh][di]) return;
       if(filledCount(di,sh)>=REQ[sh][di]) return;
-      juniorFirst.forEach(req=>{
+      seniorFirst.forEach(req=>{
         if(filledCount(di,sh)>=REQ[sh][di]) return;
         const id=req.reviewer.id;
         if(assigned[id][di]!=='OFF') return;
@@ -1457,7 +1458,7 @@ function autoGen(){
         const avail=getAvail(req,di);
         if(!avail.length) return;
         // Check if this sh is in their availability or adjacent to it
-        const canTake=avail.includes(sh)||(ADJACENT[avail[0]]||[]).includes(sh);
+        const canTake=avail.includes(sh)||avail.some(a=>(ADJACENT[a]||[]).includes(sh));
         if(!canTake) return;
         assign(req,di,sh,true,!avail.includes(sh));
       });
@@ -1472,7 +1473,7 @@ function autoGen(){
     Object.keys(REQ).forEach(sh=>{
       if(!REQ[sh][di]) return;
       if(filledCount(di,sh)>=REQ[sh][di]) return;
-      juniorFirst.forEach(req=>{
+      seniorFirst.forEach(req=>{
         if(filledCount(di,sh)>=REQ[sh][di]) return;
         const id=req.reviewer.id;
         const cur=assigned[id][di];
@@ -1482,6 +1483,7 @@ function autoGen(){
         const avail=getAvail(req,di);
         const canTake=avail.includes(sh)||(ADJACENT[avail[0]||'M']||[]).includes(sh);
         if(!canTake) return;
+        if(!SHIFTS[cur.shift]||!SHIFTS[sh]) return;
         pendingDoubles.push({
           reviewerName:req.reviewer.name, reviewerId:id,
           day:DAYS[di], dayIdx:di,
@@ -1586,10 +1588,12 @@ function confirmDoubles(doubles){
   doubles.forEach((d,idx)=>{
     const cb=document.getElementById('dbl-'+idx);
     if(cb && cb.checked){
-      // Find the reviewer's schedule entry and add the double shift as a note
-      const entry=schedule.find(s=>s.reviewer.id===d.reviewerId);
-      if(entry && entry.sched[d.dayIdx] && entry.sched[d.dayIdx]!=='OFF'){
-        entry.sched[d.dayIdx].double=d.newShiftKey; // mark 2nd shift
+      // Find reviewer and add OT tag to their existing shift (double = OT on same day)
+      const entry=schedule.find(s=>s&&s.reviewer&&s.reviewer.id===d.reviewerId);
+      if(entry && entry.sched[d.dayIdx] && typeof entry.sched[d.dayIdx]==='object'){
+        entry.sched[d.dayIdx].overtime=true; // mark existing shift as OT
+        entry.sched[d.dayIdx].double=d.newShiftKey; // also track the new shift key
+        entry.totalAssigned++;
       }
       applied++;
     }
@@ -1641,7 +1645,7 @@ function renderSchedule(){
       const a=(r.sched||{})[di];
       if(a==='AL'){ alMap[di].push(name); hasAnyShift=true; return; }
       if(!a||a==='OFF'){ offMap[di].push(name); return; }
-      if(typeof a==='object'&&a.shift){
+      if(typeof a==='object'&&a.shift&&shiftMap[a.shift]){
         shiftMap[a.shift][di].push({name,ot:a.overtime,sub:a.substituted,rid:r.reviewer.id});
         hasAnyShift=true;
       }
@@ -1759,15 +1763,20 @@ function renderSchedule(){
   out.innerHTML=html;
 
   // ── Manager edit: delegate clicks on editable/addable cells ──
+  // Use a named handler stored on the element so we can remove the old one before adding new
   if(isManagerMode){
-    out.addEventListener('click', function handler(e){
+    if(out._editHandler) out.removeEventListener('click', out._editHandler);
+    out._editHandler = function(e){
       const cell=e.target.closest('[data-edit],[data-edit-empty]');
       if(!cell) return;
       const di=parseInt(cell.dataset.di);
       const sh=cell.dataset.sh;
       const rid=cell.dataset.rid||null;
       openEditModal(rid, di, sh);
-    }, {once:true}); // re-registered each render
+    };
+    out.addEventListener('click', out._editHandler);
+  } else {
+    if(out._editHandler){ out.removeEventListener('click', out._editHandler); out._editHandler=null; }
   }
 }
 
@@ -1783,9 +1792,9 @@ function renderDash(){
 
   const covHtml=DAYS.map((d,di)=>{
     const onDuty=schedule.length
-      ?schedule.filter(r=>r.sched[di]!=='OFF').length
+      ?schedule.filter(r=>{ const s=r.sched[di]; return s && s!=='OFF' && s!=='AL'; }).length
       :approved.filter(r=>r.days[di]).length;
-    const need=REQ.N[di]+REQ.M[di]+REQ.A[di]+REQ.X[di];
+    const need=REQ.M[di]+REQ.M8[di]+REQ.A[di]+REQ.X12[di]+REQ.X[di]+REQ.N[di];
     const cls=onDuty>=need?'ok':onDuty>=need*0.75?'wn':'lo';
     return'<div class="cd"><div class="cdn">'+d+'</div><div class="cdv '+cls+'">'+onDuty+'</div><div class="cdk">need '+need+'</div></div>';
   }).join('');
@@ -1872,7 +1881,7 @@ function renderCovMatrix(){
     const otNote=r.isOT?'<span class="bdg bOT" style="font-size:8.5px">OT</span>':'';
     html+='<tr><td><b style="color:var(--txt)">'+rv.name+'</b><br><span class="tag" style="color:var(--mut2)">'+rv.id+'</span></td>'
       +'<td><span style="color:'+tc+';font-weight:700;font-size:11px">T'+rv.tier+' · '+TIER_LABELS[rv.tier]+'</span></td>'
-      +'<td><span class="bdg b'+r.prefShift+'">'+SHIFTS[r.prefShift].emoji+' '+SHIFTS[r.prefShift].name+'</span></td>';
+      +(()=>{ const ps=SHIFTS[r.prefShift]; return '<td>'+(ps?'<span class="bdg b'+r.prefShift+'">'+ps.emoji+' '+ps.name+'</span>':'<span style="color:var(--mut)">—</span>')+'</td>'; })();
     DAYS.forEach((_,i)=>{
       const s=r.days[i];const p=r.prefs[i];
       html+='<td style="text-align:center">'+(s?'<span class="bdg b'+s+'" style="font-size:8.5px;padding:1px 4px">'+s+(p?' #'+p:'')+'</span>':'<span style="color:var(--mut);font-size:10px">–</span>')+'</td>';
@@ -1888,12 +1897,13 @@ function renderCovConflicts(){
   const errors=[],warnings=[];
   requests.forEach(r=>{
     const rv=r.reviewer;
-    const n=DAYS.filter((_,i)=>r.days[i]).length;
+    if(!rv) return;
+    const n=DAYS.filter((_,i)=>r.days&&r.days[i]).length;
     ['M','M8','A','X12','X','N'].forEach(sh=>{
-      const cnt=DAYS.filter((_,i)=>r.days[i]===sh).length;
+      const cnt=DAYS.filter((_,i)=>r.days&&r.days[i]===sh).length;
       if(cnt>2) errors.push(rv.name+': '+cnt+'× '+SHIFTS[sh].name+' requested — max 2/week per type.');
     });
-    if(r.isOT) warnings.push(rv.name+': '+n+' shifts requested ('+rv.base+' base + '+(n-rv.base)+' overtime).');
+    if(r.isOT) warnings.push(rv.name+': '+n+' shifts requested ('+(rv.base||5)+' base + '+(n-(rv.base||5))+' overtime).');
   });
   const approved=requests.filter(r=>r&&r.reviewer&&r.status==='approved');
   getMissingSlots(approved).forEach(m=>warnings.push('Understaffed: '+m));
@@ -1927,10 +1937,9 @@ function renderTeam(){
     +'<div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);font-family:JetBrains Mono,monospace;margin-bottom:9px;">Rules &amp; Constraints</div>';
 
   const rules=[
-    {c:'var(--N)',t:'Night shifts are filled last — after all daytime slots are assigned. Cannot be assigned as overtime.'},
     {c:'var(--A)',t:'Max 2 shifts of the same type per week per reviewer.'},
     {c:'var(--M)',t:'Bishoy: 3 base shifts/week. All other reviewers: 5 base shifts/week.'},
-    {c:'var(--X)',t:'Overtime assigned to most junior reviewers first when required slots are unfilled.'},
+    {c:'var(--X)',t:'Overtime assigned to most senior reviewers first when required slots are unfilled.'},
     {c:'var(--grn)',t:'Seniority governs shift selection priority — Tier 1 picks first, Tier 5 last.'},
   ];
   rules.forEach(r=>{
@@ -2030,6 +2039,102 @@ function exportCSV(){
   toast('Exported as CSV ✓','s');
 }
 
+
+// ══════════════════════════════════════════════════
+// EXPORT SCHEDULE — styled HTML matching the screenshot
+// ══════════════════════════════════════════════════
+function exportScheduleHTML(){
+  if(!schedule.length){toast('No schedule to export yet.','e');return;}
+
+  const shiftKeys=['M','M8','A','X12','X','N'];
+  const LABELS={
+    M:  {label:'6:00 AM TO 2:00 PM Shift',         bg:'#e0f7fa',hd:'#006064',row:'#b2ebf2'},
+    M8: {label:'8:00 AM TO 4:00PM Shift',          bg:'#e8f5e9',hd:'#1b5e20',row:'#c8e6c9'},
+    A:  {label:'10:00AM TO 6:00PM Shift',           bg:'#fff3e0',hd:'#e65100',row:'#ffe0b2'},
+    X12:{label:'12:00PM TO 8:00PM Shift',           bg:'#fffde7',hd:'#f57f17',row:'#fff9c4'},
+    X:  {label:'2:00PM TO 10:00PM Shift',           bg:'#fff8e1',hd:'#ff6f00',row:'#ffecb3'},
+    N:  {label:'10:00 PM  TO 6:00AM Over Night Shift With All Tasks', bg:'#e3f2fd',hd:'#0d47a1',row:'#bbdefb'},
+  };
+
+  // Build lookup: shift → day → [names]
+  const shiftMap={};
+  shiftKeys.forEach(sh=>{ shiftMap[sh]=DAYS.map(()=>[]); });
+  const alMap=DAYS.map(()=>[]);
+  schedule.forEach(r=>{
+    // Abbreviate Madonna → M.
+    const name=r.reviewer.name.replace('Madonna ','M.');
+    DAYS.forEach((_,di)=>{
+      const a=(r.sched||{})[di];
+      if(a==='AL'){ alMap[di].push(name); return; }
+      if(!a||a==='OFF') return;
+      if(typeof a==='object'&&a.shift) shiftMap[a.shift][di].push({name,ot:a.overtime});
+    });
+  });
+
+  const dayHdrCells = DAYS.map(d=>`<th style="background:#9c27b0;color:#fff;padding:8px 12px;font-size:13px;font-weight:700;text-align:center;border:1px solid #7b1fa2;">${d}</th>`).join('');
+
+  let rows='';
+  shiftKeys.forEach(sh=>{
+    const style=LABELS[sh];
+    const slots=shiftMap[sh];
+    const maxR=Math.max(1,...slots.map(arr=>arr.length));
+    // Section header row
+    rows+=`<tr><td colspan="8" style="background:#424242;color:#ffeb3b;text-align:center;padding:8px 12px;font-size:13px;font-weight:700;border:1px solid #616161;">${style.label}</td></tr>`;
+    // Data rows
+    for(let row=0;row<maxR;row++){
+      const cells=DAYS.map((_,di)=>{
+        const cell=slots[di][row];
+        if(!cell) return `<td style="background:${row%2===0?style.row:'#fff'};border:1px solid #bbb;padding:6px 10px;min-width:120px;"></td>`;
+        const color=cell.ot?'#c62828':'#000';
+        const weight=cell.ot?'700':'400';
+        return `<td style="background:${row%2===0?style.row:'#fff'};border:1px solid #bbb;padding:6px 10px;color:${color};font-weight:${weight};text-align:center;font-size:12px;">${cell.name}${cell.ot?' ★':''}</td>`;
+      }).join('');
+      rows+=`<tr><td style="background:#e0e0e0;border:1px solid #bbb;padding:4px 8px;width:160px;"></td>${cells}</tr>`;
+    }
+  });
+
+  // AL row
+  if(alMap.some(a=>a.length)){
+    const maxAL=Math.max(1,...alMap.map(a=>a.length));
+    rows+=`<tr><td colspan="8" style="background:#424242;color:#80cbc4;text-align:center;padding:8px 12px;font-size:13px;font-weight:700;border:1px solid #616161;">🏖 Annual Leave</td></tr>`;
+    for(let row=0;row<maxAL;row++){
+      const cells=DAYS.map((_,di)=>{
+        const name=alMap[di][row]||'';
+        return`<td style="background:#e0f2f1;border:1px solid #bbb;padding:6px 10px;text-align:center;font-size:12px;">${name}</td>`;
+      }).join('');
+      rows+=`<tr><td style="background:#e0e0e0;border:1px solid #bbb;padding:4px 8px;"></td>${cells}</tr>`;
+    }
+  }
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>HUB ML 501 IP Team — Weekly Schedule</title>
+<style>
+  body{font-family:Arial,sans-serif;padding:20px;background:#f5f5f5;}
+  table{border-collapse:collapse;width:100%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.15);}
+  .footer{margin-top:10px;font-size:11px;color:#555;font-style:italic;}
+</style>
+</head><body>
+<table>
+<thead>
+<tr>
+  <th colspan="8" style="background:#212121;color:#ffeb3b;padding:12px;font-size:15px;font-weight:800;text-align:center;border:1px solid #424242;letter-spacing:1px;">HUB ML 501 IP Team — Weekly Schedule</th>
+</tr>
+<tr>
+  <th style="background:#9c27b0;color:#fff;padding:8px 12px;font-size:13px;font-weight:700;border:1px solid #7b1fa2;"></th>
+  ${dayHdrCells}
+</tr>
+</thead>
+<tbody>${rows}</tbody>
+</table>
+<p class="footer">Week of ${fmtWk(weekOffset)} · Egypt Time (UTC+2)<br>★ = Overtime &nbsp;|&nbsp; All OFF Duty reviewers may be needed for OT in case of business need</p>
+</body></html>`;
+
+  const a=document.createElement('a');
+  a.href='data:text/html;charset=utf-8,'+encodeURIComponent(html);
+  a.download='MetlifeHUB_Schedule_'+fmtWk(weekOffset).replace(/ /g,'_').replace(/[–-]/g,'-')+'.html';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('📊 Schedule exported as HTML ✓','s');
+}
 // ══════════════════════════════════════════════════
 // MANAGER MANUAL SCHEDULE EDIT
 // ══════════════════════════════════════════════════
@@ -2398,7 +2503,9 @@ function saveShift(sh){
   SHIFTS[sh]={...SHIFTS[sh], start, end, name,
     time: formatHour(start)+'–'+formatHour(end>23?end-24:end)};
   buildShiftRef();
-  toast('✓ '+name+' timing updated','s');
+  renderSettings();
+  pushState();
+  toast('✓ '+name+' saved','s');
 }
 
 function saveDayLoads(){
@@ -2406,6 +2513,7 @@ function saveDayLoads(){
     const v=parseInt(document.getElementById('dl-'+di).value);
     if(!isNaN(v)) DAY_LOADS[di]=v;
   });
+  pushState();
   toast('✓ Day loads saved','s');
 }
 
@@ -2477,7 +2585,7 @@ function importConfigPrompt(){
         Object.keys(REQ).forEach(k=>delete REQ[k]);
         Object.assign(REQ, cfg.REQ);
         if(cfg.DAY_LOADS) cfg.DAY_LOADS.forEach((v,i)=>DAY_LOADS[i]=v);
-        if(cfg.SHIFTS) Object.entries(cfg.SHIFTS).forEach(([k,v])=>Object.assign(SHIFTS[k]||{},v));
+        if(cfg.SHIFTS) Object.entries(cfg.SHIFTS).forEach(([k,v])=>{ if(SHIFTS[k]) Object.assign(SHIFTS[k],v); });
         buildActiveReviewerDropdown();
         buildReviewerDropdown();
         buildShiftRef();
@@ -2675,7 +2783,14 @@ function buildPayload() {
     weekOffset: weekOffset || 0,
     lastUpdated: Date.now(),
     lastUpdatedBy: activeReviewerId || 'manager',
-    v: 6
+    v: 6,
+    config: deepClean({
+      SHIFTS: Object.fromEntries(Object.entries(SHIFTS).map(([k,v])=>[k,{...v}])),
+      REQ: {...REQ},
+      REVIEWERS: [...REVIEWERS],
+      DAY_LOADS: [...DAY_LOADS],
+      customTimings: {...customTimings}
+    })
   };
 }
 
@@ -2759,7 +2874,13 @@ async function pushState() {
       weekOffset: weekOffset || 0,
       lastUpdated: Date.now(),
       lastUpdatedBy: localActiveId,
-      v: 6
+      v: 6,
+      config: deepClean({
+        SHIFTS: Object.fromEntries(Object.entries(SHIFTS).map(([k,v])=>[k,{...v}])),
+        REQ: {...REQ},
+        REVIEWERS: [...REVIEWERS],
+        DAY_LOADS: [...DAY_LOADS]
+      })
     };
 
     await fbSet('/scheduler/' + SYNC_KEY(), payload);
@@ -2826,6 +2947,37 @@ async function pullState(force) {
     requests = cleanReqs;
     schedule = cleanScheds;
     lastSyncTs = raw.lastUpdated || Date.now();
+
+    // ── Restore persisted config (shift names, timings, slot counts, team, loads) ──
+    if (raw.config && typeof raw.config === 'object') {
+      const cfg = raw.config;
+      // Restore SHIFTS (names, timings)
+      if (cfg.SHIFTS && typeof cfg.SHIFTS === 'object') {
+        Object.keys(cfg.SHIFTS).forEach(k => {
+          if (SHIFTS[k]) Object.assign(SHIFTS[k], cfg.SHIFTS[k]);
+        });
+        try { buildShiftRef(); } catch(e) {}
+      }
+      // Restore REQ (slot counts)
+      if (cfg.REQ && typeof cfg.REQ === 'object') {
+        Object.keys(cfg.REQ).forEach(k => { if (REQ[k]) REQ[k] = cfg.REQ[k]; });
+      }
+      // Restore REVIEWERS
+      if (Array.isArray(cfg.REVIEWERS) && cfg.REVIEWERS.length) {
+        REVIEWERS.length = 0;
+        cfg.REVIEWERS.forEach(r => REVIEWERS.push(r));
+        try { buildActiveReviewerDropdown(); } catch(e) {}
+        try { buildReviewerDropdown(); } catch(e) {}
+      }
+      // Restore DAY_LOADS
+      if (Array.isArray(cfg.DAY_LOADS)) {
+        cfg.DAY_LOADS.forEach((v, i) => { if (!isNaN(v)) DAY_LOADS[i] = v; });
+      }
+      // Restore customTimings
+      if (cfg.customTimings && typeof cfg.customTimings === 'object') {
+        Object.keys(cfg.customTimings).forEach(k => { customTimings[k] = cfg.customTimings[k]; });
+      }
+    }
 
     // Re-render everything safely
     try { renderDash(); } catch(e) { console.error('renderDash:', e); }
